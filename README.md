@@ -1,6 +1,6 @@
 # 🔍 LewisFind: Campus Lost & Found Tracking System
 
-🌐 **Live Demo:** [**(https://lost-and-found-system-phi.vercel.app/)**]
+🌐 **Live Demo:** **https://lost-and-found-system-phi.vercel.app/**
 
 A premium, cinematic, web-based Lost & Found application for **The Lewis College**. 
 Built with ReactJS, Tailwind CSS, PHP, and MySQL.
