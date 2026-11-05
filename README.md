@@ -1,16 +1,48 @@
-# React + Vite
+# 🔍 LewisFind: Campus Lost & Found Tracking System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A premium, cinematic, web-based Lost & Found application for **The Lewis College**. 
+Built with ReactJS, Tailwind CSS, PHP, and MySQL.
 
-Currently, two official plugins are available:
+## 🚦 Current Project Status
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+### ✅ Phase 1 & 2: COMPLETED (Frontend UI & Events)
+- [x] React + Vite + Tailwind CSS v4 setup.
+- [x] Cinematic Dark Theme (TLC Royal Blue & Glassmorphism).
+- [x] **Authentication Pages:** Login and Register forms with `onSubmit` event handling.
+- [x] **App Layout:** Responsive Sidebar and Top Navbar with active routing states.
+- [x] **Report Lost & Found Forms:** Interactive inputs and real-time validation.
+- [x] **Drag & Drop Upload:** Image upload with instant preview using Drag events (`onDragOver`, `onDrop`).
+- [x] **Search Page:** Live search filtering using `onChange` events.
+- [x] **Admin Dashboard:** Glassmorphism data table UI for verifying claims.
+- [x] React Router DOM fully configured.
 
-## React Compiler
+### ⏳ Phase 3 & 4: IN PROGRESS (Backend & Database)
+- [ ] Set up XAMPP (Apache & MySQL).
+- [ ] Create MySQL Database `lewisfind_db` (Tables: `users`, `items`, `claims`).
+- [ ] Write PHP API endpoints for Registration, Login, and Reporting.
+- [ ] Connect React `fetch()` calls to the PHP API.
+- [ ] Replace fake data in Search with real database items.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 🎨 Phase 5 & 6: PENDING (Polish & Defense)
+- [ ] Add Framer Motion page transitions.
+- [ ] Add toast notifications for success/error states.
+- [ ] Final code review and defense preparation.
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 🛠️ Technology Stack
+- **Frontend:** ReactJS (Vite), Tailwind CSS, React Router DOM
+- **Backend:** PHP (RESTful API)
+- **Database:** MySQL
+- **Design:** Custom Dark Cinematic UI (TLC Blue #2A5CFF)
+
+---
+
+
+---
+
+## 💻 How to Run the Project Locally (For Groupmates)
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/blamelui/lost-and-found-system.git
