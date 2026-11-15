@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "server": "node server/index.js",
-    "dev:all": "concurrently \"npm run server\" \"npm run dev\"",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "node server/index.js",
+    "dev:all": "concurrently \"npm run server\" \"npm run dev\"",
+    "setup": "node scripts/setup.js"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
