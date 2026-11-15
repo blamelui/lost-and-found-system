@@ -1,32 +1,40 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom'; // 1. Added useNavigate here
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
 
 export default function Login() {
-  const navigate = useNavigate(); // 2. Added it here, right at the top of the component
+  const navigate = useNavigate();
+  const { login } = useAuth();
 
-  // React State for form inputs
   const [formData, setFormData] = useState({
     email: '',
     password: '',
-    remember: false
+    remember: false,
   });
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
 
-  // Event handler for typing in inputs
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData({
       ...formData,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? checked : value,
     });
   };
 
-  // Event handler for submitting the form
-  const handleSubmit = (e) => {
-    e.preventDefault(); // Stop page reload
-    console.log('Login Data Submitted:', formData);
-    
-    // Simulate successful login and redirect to Dashboard
-    navigate('/dashboard'); // 3. Added the redirect here
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      // Uses the "email" field as the username
+      const user = await login(formData.email.trim(), formData.password);
+      navigate(user.role === 'admin' ? '/admin' : '/dashboard', { replace: true });
+    } catch (err) {
+      setError(err.message || 'Login failed');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -47,11 +55,22 @@ export default function Login() {
           <h2 className="text-2xl font-semibold tracking-tight">Welcome back</h2>
           <p className="mt-1.5 text-sm text-[#A0B0D0]">Sign in to report or claim an item.</p>
 
+          {error && (
+            <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+              {error}
+            </p>
+          )}
+
           <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
             <div>
-              <label htmlFor="email" className="mb-2 block text-sm font-medium text-[#A0B0D0]">College email</label>
+              <label htmlFor="email" className="mb-2 block text-sm font-medium text-[#A0B0D0]">
+                College email
+              </label>
               <input
-                id="email" name="email" type="email" required
+                id="email"
+                name="email"
+                type="text"
+                required
                 value={formData.email}
                 onChange={handleChange}
                 placeholder="you@lewiscollege.edu"
@@ -61,11 +80,18 @@ export default function Login() {
 
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <label htmlFor="password" className="block text-sm font-medium text-[#A0B0D0]">Password</label>
-                <a href="#" className="text-sm font-medium text-[#2A5CFF] transition hover:text-white">Forgot password?</a>
+                <label htmlFor="password" className="block text-sm font-medium text-[#A0B0D0]">
+                  Password
+                </label>
+                <a href="#" className="text-sm font-medium text-[#2A5CFF] transition hover:text-white">
+                  Forgot password?
+                </a>
               </div>
               <input
-                id="password" name="password" type="password" required
+                id="password"
+                name="password"
+                type="password"
+                required
                 value={formData.password}
                 onChange={handleChange}
                 placeholder="Enter your password"
@@ -75,7 +101,9 @@ export default function Login() {
 
             <label htmlFor="remember" className="flex cursor-pointer items-center gap-3 text-sm text-[#A0B0D0]">
               <input
-                id="remember" name="remember" type="checkbox"
+                id="remember"
+                name="remember"
+                type="checkbox"
                 checked={formData.remember}
                 onChange={handleChange}
                 className="h-4 w-4 rounded border-white/20 bg-[#0A1128]/60 accent-[#2A5CFF] focus:ring-2 focus:ring-[#2A5CFF]/40"
@@ -85,9 +113,10 @@ export default function Login() {
 
             <button
               type="submit"
-              className="w-full rounded-xl bg-[#1C3F95] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_0_30px_rgba(42,92,255,0.45)] transition duration-200 hover:scale-[1.02] hover:bg-[#2A5CFF] hover:shadow-[0_0_44px_rgba(42,92,255,0.65)] active:scale-[0.99]"
+              disabled={busy}
+              className="w-full rounded-xl bg-[#1C3F95] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_0_30px_rgba(42,92,255,0.45)] transition duration-200 hover:scale-[1.02] hover:bg-[#2A5CFF] hover:shadow-[0_0_44px_rgba(42,92,255,0.65)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Sign in
+              {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
 

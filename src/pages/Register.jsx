@@ -1,33 +1,71 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function Register() {
+  const navigate = useNavigate();
+  const { login } = useAuth();
+
   const [formData, setFormData] = useState({
     fullname: '',
     student_id: '',
     email: '',
     password: '',
     confirm_password: '',
-    terms: false
+    terms: false,
   });
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
 
   const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
+    const { name, value, type, checked } = e.target;  
     setFormData({
       ...formData,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? checked : value,
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setError(null);
+
     if (formData.password !== formData.confirm_password) {
-      alert('Passwords do not match!');
+      setError('Passwords do not match.');
       return;
     }
-    console.log('Register Data Submitted:', formData);
-    alert('Register event triggered! Check console.');
-    // Later, we will add fetch() here to connect to PHP
+    if (!formData.terms) {
+      setError('You must agree to the Terms of Use.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullname: formData.fullname,
+          student_id: formData.student_id,
+          email: formData.email,
+          password: formData.password,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+      // Persist the returned token so the user is logged in immediately
+      localStorage.setItem('token', data.token);
+
+      // Send them to the right landing page based on role
+      const dest = data.user.role === 'admin' ? '/admin' : '/dashboard';
+      navigate(dest, { replace: true });
+    } catch (err) {
+      setError(err.message || 'Registration failed');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -46,6 +84,12 @@ export default function Register() {
         <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)] backdrop-blur-xl sm:p-10">
           <h2 className="text-2xl font-semibold tracking-tight">Create your account</h2>
           <p className="mt-1.5 text-sm text-[#A0B0D0]">Use your college details so we can match you with your items.</p>
+
+          {error && (
+            <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+              {error}
+            </p>
+          )}
 
           <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -111,15 +155,16 @@ export default function Register() {
 
             <button
               type="submit"
-              className="w-full rounded-xl bg-[#1C3F95] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_0_30px_rgba(42,92,255,0.45)] transition duration-200 hover:scale-[1.02] hover:bg-[#2A5CFF] hover:shadow-[0_0_44px_rgba(42,92,255,0.65)] active:scale-[0.99]"
+              disabled={busy}
+              className="w-full rounded-xl bg-[#1C3F95] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_0_30px_rgba(42,92,255,0.45)] transition duration-200 hover:scale-[1.02] hover:bg-[#2A5CFF] hover:shadow-[0_0_44px_rgba(42,92,255,0.65)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Create account
+              {busy ? 'Creating account…' : 'Create account'}
             </button>
           </form>
 
           <p className="mt-8 text-center text-sm text-[#A0B0D0]">
             Already have an account?{' '}
-            <Link to="/" className="font-semibold text-white transition hover:text-[#2A5CFF]">
+            <Link to="/login" className="font-semibold text-white transition hover:text-[#2A5CFF]">
               Sign in
             </Link>
           </p>
