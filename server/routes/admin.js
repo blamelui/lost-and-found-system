@@ -6,7 +6,7 @@ const router = express.Router();
 
 /* ================================================================ */
 /* GET /api/admin/stats                                             */
-/* ================================================================ */
+
 router.get('/stats', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [
@@ -78,7 +78,7 @@ router.get('/stats', requireAuth, requireAdmin, async (req, res) => {
 
 /* ================================================================ */
 /* GET /api/admin/claims/pending                                    */
-/* ================================================================ */
+
 router.get('/claims/pending', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query(`
@@ -110,7 +110,7 @@ router.get('/claims/pending', requireAuth, requireAdmin, async (req, res) => {
 
 /* ================================================================ */
 /* GET /api/admin/claims/by-item/:itemId                            */
-/* ================================================================ */
+
 router.get('/claims/by-item/:itemId', requireAuth, requireAdmin, async (req, res) => {
   const itemId = Number(req.params.itemId);
   if (!Number.isInteger(itemId) || itemId <= 0) {
@@ -141,7 +141,7 @@ router.get('/claims/by-item/:itemId', requireAuth, requireAdmin, async (req, res
 
 /* ================================================================ */
 /* POST /api/admin/claims/:id/approve                               */
-/* ================================================================ */
+
 router.post('/claims/:id/approve', requireAuth, requireAdmin, async (req, res) => {
   const claimId = Number(req.params.id);
   if (!Number.isInteger(claimId) || claimId <= 0) {
@@ -216,7 +216,7 @@ router.post('/claims/:id/approve', requireAuth, requireAdmin, async (req, res) =
 
 /* ================================================================ */
 /* POST /api/admin/claims/:id/reject                                */
-/* ================================================================ */
+
 router.post('/claims/:id/reject', requireAuth, requireAdmin, async (req, res) => {
   const claimId = Number(req.params.id);
   if (!Number.isInteger(claimId) || claimId <= 0) {
@@ -243,7 +243,7 @@ router.post('/claims/:id/reject', requireAuth, requireAdmin, async (req, res) =>
 
 /* ================================================================ */
 /* POST /api/admin/items/:id/returned                               */
-/* ================================================================ */
+
 router.post('/items/:id/returned', requireAuth, requireAdmin, async (req, res) => {
   const itemId = Number(req.params.id);
   if (!Number.isInteger(itemId) || itemId <= 0) {
@@ -265,7 +265,7 @@ router.post('/items/:id/returned', requireAuth, requireAdmin, async (req, res) =
 
 /* ================================================================ */
 /* GET /api/admin/inventory                                         */
-/* ================================================================ */
+
 router.get('/inventory', requireAuth, requireAdmin, async (req, res) => {
   const { status, category, q, limit } = req.query;
   const where = ['archived_at IS NULL'];
@@ -317,7 +317,7 @@ router.get('/inventory', requireAuth, requireAdmin, async (req, res) => {
 
 /* ================================================================ */
 /* POST /api/admin/items/quick-log                                  */
-/* ================================================================ */
+
 router.post('/items/quick-log', requireAuth, requireAdmin, async (req, res) => {
   const {
     title, category, category_other, color,
@@ -359,7 +359,7 @@ router.post('/items/quick-log', requireAuth, requireAdmin, async (req, res) => {
 
 /* ================================================================ */
 /* GET /api/admin/lost-reports                                      */
-/* ================================================================ */
+
 router.get('/lost-reports', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query(`
@@ -380,7 +380,7 @@ router.get('/lost-reports', requireAuth, requireAdmin, async (req, res) => {
 
 /* ================================================================ */
 /* POST /api/admin/link-manual                                      */
-/* ================================================================ */
+
 router.post('/link-manual', requireAuth, requireAdmin, async (req, res) => {
   const { lost_id, found_id } = req.body || {};
   const lostId  = Number(lost_id);
@@ -430,7 +430,7 @@ router.post('/link-manual', requireAuth, requireAdmin, async (req, res) => {
 
 /* ================================================================ */
 /* GET /api/admin/aging                                             */
-/* ================================================================ */
+
 router.get('/aging', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query(`
@@ -454,7 +454,7 @@ router.get('/aging', requireAuth, requireAdmin, async (req, res) => {
 
 /* ================================================================ */
 /* POST /api/admin/items/bulk-archive                               */
-/* ================================================================ */
+
 router.post('/items/bulk-archive', requireAuth, requireAdmin, async (req, res) => {
   const { ids } = req.body || {};
   if (!Array.isArray(ids) || ids.length === 0) {
@@ -474,4 +474,313 @@ router.post('/items/bulk-archive', requireAuth, requireAdmin, async (req, res) =
   }
 });
 
+/* ================================================================ */
+/* PATCH /api/admin/items/:id — edit item fields                    */
+
+router.patch('/items/:id', requireAuth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid item id' });
+  }
+
+  const allowed = [
+    'title', 'brand', 'color', 'category', 'category_other',
+    'description', 'storage_location', 'private_notes', 'last_location',
+    'urgency', 'status',
+  ];
+
+  const updates = [];
+  const params = [];
+
+  for (const key of allowed) {
+    if (req.body[key] !== undefined) {
+      updates.push(`${key} = ?`);
+      const v = req.body[key];
+      params.push(v === '' ? null : v);
+    }
+  }
+
+  if (updates.length === 0) {
+    return res.status(400).json({ error: 'No valid fields to update' });
+  }
+
+  params.push(id);
+
+  try {
+    const [result] = await pool.query(
+      `UPDATE items SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    const [rows] = await pool.query(`SELECT * FROM items WHERE id = ?`, [id]);
+    res.json({ ok: true, item: rows[0] });
+  } catch (err) {
+    console.error('[admin] edit item failed:', err);
+    res.status(500).json({ error: 'Failed to update item' });
+  }
+});
+
+/* ================================================================ */
+/* DELETE /api/admin/items/:id — permanently delete an item         */
+/* Cascades to claims, item_photos via foreign keys                 */
+
+router.delete('/items/:id', requireAuth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid item id' });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    /* Fetch the item first to find the image file to clean up */
+    const [rows] = await conn.query(
+      `SELECT id, title, image_url FROM items WHERE id = ?`, [id]
+    );
+    if (rows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    const item = rows[0];
+
+    /* Get all photo file paths for cleanup */
+    const [photos] = await conn.query(
+      `SELECT url FROM item_photos WHERE item_id = ?`, [id]
+    );
+
+    /* Delete the item — cascades to claims, item_photos, notifications */
+    await conn.query(`DELETE FROM items WHERE id = ?`, [id]);
+
+    await conn.commit();
+
+    /* Best-effort file cleanup (outside the transaction) */
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const uploadsDir = path.resolve('server', 'uploads');
+
+    const filesToRemove = [];
+    if (item.image_url) filesToRemove.push(item.image_url);
+    for (const p of photos) filesToRemove.push(p.url);
+
+    for (const urlPath of filesToRemove) {
+      if (!urlPath) continue;
+      const filename = path.basename(urlPath);
+      const fullPath = path.join(uploadsDir, filename);
+      try {
+        if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+      } catch (e) {
+        console.warn('[admin] could not remove file:', fullPath, e.message);
+      }
+    }
+
+    res.json({ ok: true, id, title: item.title });
+  } catch (err) {
+    await conn.rollback();
+    console.error('[admin] delete item failed:', err);
+    res.status(500).json({ error: 'Failed to delete item' });
+  } finally {
+    conn.release();
+  }
+});
+
+/* ================================================================ */
+/* POST /api/admin/items/:id/soft-delete — archive rather than kill */
+/* (already exists as bulk-archive, this is the single-item version)*/
+
+router.post('/items/:id/archive', requireAuth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid item id' });
+  }
+  try {
+    const [result] = await pool.query(
+      `UPDATE items SET archived_at = NOW() WHERE id = ?`, [id]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    res.json({ ok: true, id });
+  } catch (err) {
+    console.error('[admin] archive item failed:', err);
+    res.status(500).json({ error: 'Failed to archive item' });
+  }
+});
+
+/* ================================================================ */
+/* GET /api/admin/items/:id — full item for edit form              */
+
+router.get('/items/:id', requireAuth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid item id' });
+  }
+  try {
+    const [rows] = await pool.query(`SELECT * FROM items WHERE id = ?`, [id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('[admin] get item failed:', err);
+    res.status(500).json({ error: 'Failed to load item' });
+  }
+});
+/* ================================================================ */
+/* POST /api/admin/items/:id/set-status                             */
+/* Force-set status and/or returned_at — for admin corrections      */
+
+router.post('/items/:id/set-status', requireAuth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid item id' });
+  }
+
+  const { status, returned } = req.body || {};
+  const updates = [];
+  const params = [];
+
+  if (status !== undefined) {
+    const validStatuses = ['lost', 'found', 'claimed'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    updates.push('status = ?');
+    params.push(status);
+  }
+
+  if (returned !== undefined) {
+    if (returned === true || returned === 1) {
+      updates.push('returned_at = NOW()');
+    } else {
+      updates.push('returned_at = NULL');
+    }
+  }
+
+  if (updates.length === 0) {
+    return res.status(400).json({ error: 'No fields to update' });
+  }
+
+  params.push(id);
+
+  try {
+    const [result] = await pool.query(
+      `UPDATE items SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    const [rows] = await pool.query(
+      `SELECT id, title, status, returned_at FROM items WHERE id = ?`, [id]
+    );
+    res.json({ ok: true, item: rows[0] });
+  } catch (err) {
+    console.error('[admin] set-status failed:', err);
+    res.status(500).json({ error: 'Failed to update item status' });
+  }
+});
+/* ================================================================ */
+/* GET /api/admin/claims/log                                        */
+/* Full claims history — all statuses, searchable, filterable       */
+/* ================================================================ */
+router.get('/claims/log', requireAuth, requireAdmin, async (req, res) => {
+  const { status, q, limit } = req.query;
+  const where = [];
+  const params = [];
+
+  if (status && status !== 'all') {
+    where.push('c.status = ?');
+    params.push(status);
+  }
+
+  if (q && q.trim().length > 0) {
+    const like = `%${q.trim()}%`;
+    where.push('(u.username LIKE ? OR u.student_id LIKE ? OR u.email LIKE ? OR i.title LIKE ?)');
+    params.push(like, like, like, like);
+  }
+
+  const limitNum = Math.min(Number(limit) || 100, 300);
+  params.push(limitNum);
+
+  try {
+    const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+
+    const [rows] = await pool.query(
+      `SELECT
+         c.id, c.status, c.claim_date, c.proof, c.phone, c.lost_context,
+         c.supporting_image_url, c.reject_reason,
+         u.id AS claimant_id, u.username AS claimant,
+         u.full_name AS claimant_full_name,
+         u.student_id AS claimant_student_id,
+         u.email AS claimant_email,
+         i.id AS item_id, i.title AS item_title,
+         i.image_url AS item_image_url,
+         i.category AS item_category,
+         i.status AS item_status,
+         i.storage_location AS item_storage,
+         i.returned_at AS item_returned_at,
+         (SELECT COUNT(*) FROM claims c2
+           WHERE c2.claimant_id = u.id) AS claimant_total_claims,
+         (SELECT COUNT(*) FROM claims c2
+           WHERE c2.claimant_id = u.id AND c2.status = 'approved') AS claimant_approved_claims,
+         (SELECT COUNT(*) FROM claims c2
+           WHERE c2.claimant_id = u.id AND c2.status = 'rejected') AS claimant_rejected_claims
+       FROM claims c
+       JOIN users u ON u.id = c.claimant_id
+       JOIN items i ON i.id = c.item_id
+       ${whereSql}
+       ORDER BY c.claim_date DESC
+       LIMIT ?`,
+      params
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error('[admin] claims log failed:', err);
+    res.status(500).json({ error: 'Failed to load claims log' });
+  }
+});
+
+/* ================================================================ */
+/* GET /api/admin/claims/by-claimant/:userId                        */
+/* All claims by a specific user — useful for fraud investigation   */
+/* ================================================================ */
+router.get('/claims/by-claimant/:userId', requireAuth, requireAdmin, async (req, res) => {
+  const userId = Number(req.params.userId);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ error: 'Invalid user id' });
+  }
+  try {
+    const [userRows] = await pool.query(
+      `SELECT id, username, full_name, student_id, email, role, created_at
+         FROM users WHERE id = ?`,
+      [userId]
+    );
+    if (userRows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const [claims] = await pool.query(
+      `SELECT
+         c.id, c.status, c.claim_date, c.proof, c.reject_reason,
+         c.phone, c.lost_context, c.supporting_image_url,
+         i.id AS item_id, i.title AS item_title,
+         i.image_url AS item_image_url, i.category AS item_category,
+         i.storage_location AS item_storage, i.returned_at AS item_returned_at
+       FROM claims c
+       JOIN items i ON i.id = c.item_id
+       WHERE c.claimant_id = ?
+       ORDER BY c.claim_date DESC`,
+      [userId]
+    );
+
+    res.json({ user: userRows[0], claims });
+  } catch (err) {
+    console.error('[admin] claims by claimant failed:', err);
+    res.status(500).json({ error: 'Failed to load claimant history' });
+  }
+});
 export default router;

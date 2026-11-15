@@ -35,7 +35,16 @@ export default function App() {
         <Route path="/items/:id/claim" element={<ClaimItem />} />
         <Route path="/report-lost" element={<ReportLost />} />
         <Route path="/report-found" element={<ReportFound />} />
-        <Route path="/admin" element={<ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>} />
+
+        {/* Admin: bare /admin redirects to /admin/overview */}
+        <Route path="/admin" element={<Navigate to="/admin/overview" replace />} />
+
+        {/* One route per admin tab so sidebar links and URL stay in sync */}
+        <Route path="/admin/overview"   element={<ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>} />
+        <Route path="/admin/inventory"  element={<ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>} />
+        <Route path="/admin/matching"   element={<ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>} />
+        <Route path="/admin/aging"      element={<ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>} />
+        <Route path="/admin/claimslog"  element={<ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>} />
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

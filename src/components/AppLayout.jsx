@@ -48,6 +48,14 @@ const Icon = {
   ),
 };
 
+  const ADMIN_TABS = [
+    { id: 'overview',  label: 'Overview' },
+    { id: 'inventory', label: 'Inventory' },
+    { id: 'matching',  label: 'Lost ↔ Found' },
+    { id: 'aging',     label: 'Aging & Retention' },
+    { id: 'claimslog', label: 'Claims Log' },
+  ];
+
 function NavItem({ to, icon, label, badge }) {
   return (
     <NavLink
@@ -176,6 +184,7 @@ export default function AppLayout() {
   }
 
   const isAdmin = user?.role === 'admin';
+  const isAdminRoute = location.pathname.startsWith('/admin');
   const displayName = user?.username || 'Guest';
   const initials = (user?.username || '?').slice(0, 2).toUpperCase();
   const roleLabel = isAdmin ? 'Admin' : 'Student';
@@ -220,51 +229,98 @@ export default function AppLayout() {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4">
-          <SectionLabel>Menu</SectionLabel>
-          <div className="space-y-1">
-            <NavItem to="/dashboard" icon={Icon.dashboard} label="Dashboard" />
-            <NavItem to="/search" icon={Icon.search} label="Search" />
-            <NavItem to="/claims" icon={Icon.claims} label="My Claims" />
-          </div>
-
-          <SectionLabel>Report an item</SectionLabel>
-          <div className="space-y-1">
-            <NavLink
-              to="/report-lost"
-              className={({ isActive }) =>
-                `group flex items-center gap-3 rounded-xl border px-3 py-2 text-[13px] font-medium transition ${
-                  isActive
-                    ? 'border-red-500/50 bg-red-500/15 text-red-200 shadow-[0_0_18px_rgba(239,68,68,0.25)]'
-                    : 'border-red-500/20 bg-red-500/[0.06] text-red-300 hover:border-red-500/40 hover:bg-red-500/[0.12]'
-                }`
-              }
-            >
-              <span className="shrink-0">{Icon.lost}</span>
-              <span className="flex-1 truncate">Report Lost</span>
-              <span className="text-[10px] text-red-300/60">+</span>
-            </NavLink>
-            <NavLink
-              to="/report-found"
-              className={({ isActive }) =>
-                `group flex items-center gap-3 rounded-xl border px-3 py-2 text-[13px] font-medium transition ${
-                  isActive
-                    ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200 shadow-[0_0_18px_rgba(16,185,129,0.25)]'
-                    : 'border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-300 hover:border-emerald-500/40 hover:bg-emerald-500/[0.12]'
-                }`
-              }
-            >
-              <span className="shrink-0">{Icon.found}</span>
-              <span className="flex-1 truncate">Report Found</span>
-              <span className="text-[10px] text-emerald-300/60">+</span>
-            </NavLink>
-          </div>
-
-          {isAdmin && (
+          {isAdminRoute ? (
             <>
-              <SectionLabel>Admin</SectionLabel>
+              <SectionLabel>Admin Panel</SectionLabel>
               <div className="space-y-1">
-                <NavItem to="/admin" icon={Icon.admin} label="Admin Panel" />
+                {ADMIN_TABS.map((t) => (
+                  <NavLink
+                    key={t.id}
+                    to={`/admin/${t.id}`}
+                    end
+                    className={({ isActive }) =>
+                      `group relative flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition ${
+                        isActive
+                          ? 'bg-[#2A5CFF]/15 text-white shadow-[inset_0_0_0_1px_rgba(42,92,255,0.35),0_0_20px_rgba(42,92,255,0.15)]'
+                          : 'text-[#A0B0D0] hover:bg-white/[0.04] hover:text-white'
+                      }`
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <span className={`absolute left-0 top-1/2 h-5 -translate-y-1/2 rounded-r-full transition-all duration-200 ${
+                          isActive ? 'w-0.5 bg-[#2A5CFF] shadow-[0_0_8px_rgba(42,92,255,0.9)]' : 'w-0'
+                        }`} />
+                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-white/[0.06] text-[10px] text-[#A0B0D0]">
+                          {t.label.charAt(0)}
+                        </span>
+                        <span className="flex-1 truncate">{t.label}</span>
+                      </>
+                    )}
+                  </NavLink>
+                ))}
               </div>
+
+              <SectionLabel>Switch to</SectionLabel>
+              <div className="space-y-1">
+                <NavLink
+                  to="/dashboard"
+                  className="group flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium text-[#A0B0D0] transition hover:bg-white/[0.04] hover:text-white"
+                >
+                  <span className="shrink-0">{Icon.dashboard}</span>
+                  <span className="flex-1 truncate">Student View</span>
+                </NavLink>
+              </div>
+            </>
+          ) : (
+            <>
+              <SectionLabel>Menu</SectionLabel>
+              <div className="space-y-1">
+                <NavItem to="/dashboard" icon={Icon.dashboard} label="Dashboard" />
+                <NavItem to="/search" icon={Icon.search} label="Search" />
+                <NavItem to="/claims" icon={Icon.claims} label="My Claims" />
+              </div>
+
+              <SectionLabel>Report an item</SectionLabel>
+              <div className="space-y-1">
+                <NavLink
+                  to="/report-lost"
+                  className={({ isActive }) =>
+                    `group flex items-center gap-3 rounded-xl border px-3 py-2 text-[13px] font-medium transition ${
+                      isActive
+                        ? 'border-red-500/50 bg-red-500/15 text-red-200 shadow-[0_0_18px_rgba(239,68,68,0.25)]'
+                        : 'border-red-500/20 bg-red-500/[0.06] text-red-300 hover:border-red-500/40 hover:bg-red-500/[0.12]'
+                    }`
+                  }
+                >
+                  <span className="shrink-0">{Icon.lost}</span>
+                  <span className="flex-1 truncate">Report Lost</span>
+                  <span className="text-[10px] text-red-300/60">+</span>
+                </NavLink>
+                <NavLink
+                  to="/report-found"
+                  className={({ isActive }) =>
+                    `group flex items-center gap-3 rounded-xl border px-3 py-2 text-[13px] font-medium transition ${
+                      isActive
+                        ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200 shadow-[0_0_18px_rgba(16,185,129,0.25)]'
+                        : 'border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-300 hover:border-emerald-500/40 hover:bg-emerald-500/[0.12]'
+                    }`
+                  }
+                >
+                  <span className="shrink-0">{Icon.found}</span>
+                  <span className="flex-1 truncate">Report Found</span>
+                  <span className="text-[10px] text-emerald-300/60">+</span>
+                </NavLink>
+              </div>
+
+              {isAdmin && (
+                <>
+                  <SectionLabel>Admin</SectionLabel>
+                  <div className="space-y-1">
+                    <NavItem to="/admin/overview" icon={Icon.admin} label="Admin Panel" />
+                  </div>
+                </>
+              )}
             </>
           )}
         </nav>

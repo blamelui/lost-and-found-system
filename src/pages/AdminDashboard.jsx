@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -18,6 +19,7 @@ const TABS = [
   { id: 'inventory', label: 'Inventory' },
   { id: 'matching',  label: 'Lost ↔ Found' },
   { id: 'aging',     label: 'Aging & Retention' },
+  { id: 'claimslog', label: 'Claims Log' },
 ];
 
 const CATEGORIES = [
@@ -166,6 +168,174 @@ function QuickLogModal({ onClose, onCreated, token }) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Edit Item Modal ---------------- */
+function EditItemModal({ token, itemId, onClose, onSaved }) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [form, setForm] = useState({
+    title: '', brand: '', color: '', category: '', category_other: '',
+    description: '', storage_location: '', private_notes: '',
+    last_location: '', urgency: 'normal', status: 'found',
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/items/${itemId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) {
+          setForm({
+            title: data.title || '',
+            brand: data.brand || '',
+            color: data.color || '',
+            category: data.category || '',
+            category_other: data.category_other || '',
+            description: data.description || '',
+            storage_location: data.storage_location || '',
+            private_notes: data.private_notes || '',
+            last_location: data.last_location || '',
+            urgency: data.urgency || 'normal',
+            status: data.status || 'found',
+          });
+        }
+      } catch (e) {
+        if (!cancelled) setError(e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    if (itemId) load();
+    return () => { cancelled = true; };
+  }, [itemId, token]);
+
+  const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  async function save(e) {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/items/${itemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      onSaved(data.item);
+    } catch (err) {
+      setError(err.message || 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputCls = 'w-full rounded-lg border border-white/10 bg-[#0A1128]/60 px-3 py-2 text-sm text-white placeholder-[#A0B0D0]/40 outline-none transition focus:border-[#2A5CFF] focus:ring-2 focus:ring-[#2A5CFF]/40';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-white/15 bg-[#0A1128]" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+          <h2 className="text-sm font-semibold text-white">Edit Item #{itemId}</h2>
+          <button onClick={onClose} className="rounded-lg p-1 text-[#A0B0D0] hover:bg-white/5 hover:text-white">✕</button>
+        </div>
+
+        {loading ? (
+          <div className="p-8 text-center text-sm text-[#A0B0D0]">Loading item…</div>
+        ) : (
+          <form onSubmit={save} className="max-h-[75vh] space-y-3 overflow-y-auto p-5">
+            <div>
+              <label className="mb-1 block text-[10px] uppercase tracking-wider text-[#A0B0D0]">Title *</label>
+              <input required value={form.title} onChange={(e) => setField('title', e.target.value)} className={inputCls} />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-wider text-[#A0B0D0]">Category</label>
+                <select value={form.category} onChange={(e) => setField('category', e.target.value)} className={inputCls}>
+                  <option value="" className="text-black">None</option>
+                  {CATEGORIES.map((c) => (<option key={c.value} value={c.value} className="text-black">{c.label}</option>))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-wider text-[#A0B0D0]">Brand</label>
+                <input value={form.brand} onChange={(e) => setField('brand', e.target.value)} className={inputCls} />
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-wider text-[#A0B0D0]">Color</label>
+                <input value={form.color} onChange={(e) => setField('color', e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-wider text-[#A0B0D0]">Status</label>
+                <select value={form.status} onChange={(e) => setField('status', e.target.value)} className={inputCls}>
+                  <option value="found" className="text-black">Unclaimed</option>
+                  <option value="claimed" className="text-black">Approved</option>
+                  <option value="lost" className="text-black">Lost</option>
+                </select>
+              </div>
+            </div>
+
+            {form.category === 'other' && (
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-wider text-[#A0B0D0]">Specify category</label>
+                <input value={form.category_other} onChange={(e) => setField('category_other', e.target.value)} className={inputCls} />
+              </div>
+            )}
+
+            <div>
+              <label className="mb-1 block text-[10px] uppercase tracking-wider text-[#A0B0D0]">Public description</label>
+              <textarea rows={2} value={form.description} onChange={(e) => setField('description', e.target.value)} className={inputCls} />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-wider text-[#A0B0D0]">Found at</label>
+                <input value={form.last_location} onChange={(e) => setField('last_location', e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-wider text-[#A0B0D0]">Storage location</label>
+                <input value={form.storage_location} onChange={(e) => setField('storage_location', e.target.value)} className={inputCls} />
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[10px] uppercase tracking-wider text-[#A0B0D0]">Urgency</label>
+              <select value={form.urgency} onChange={(e) => setField('urgency', e.target.value)} className={inputCls}>
+                <option value="low" className="text-black">Low</option>
+                <option value="normal" className="text-black">Normal</option>
+                <option value="high" className="text-black">High</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[10px] uppercase tracking-wider text-[#A0B0D0]">Private verification notes</label>
+              <textarea rows={2} value={form.private_notes} onChange={(e) => setField('private_notes', e.target.value)} className={inputCls} />
+            </div>
+
+            {error && <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">{error}</p>}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={onClose} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/80 hover:bg-white/[0.06]">Cancel</button>
+              <button type="submit" disabled={saving} className="rounded-lg bg-gradient-to-r from-[#2A5CFF] to-[#1C3F95] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">
+                {saving ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );
@@ -425,7 +595,18 @@ function VerificationPanel({ token, itemId, onClose, onToast, onChanged }) {
 /* ================================================================ */
 export default function AdminDashboard() {
   const { token } = useAuth();
-  const [tab, setTab] = useState('overview');
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Derive tab from URL: /admin/overview -> 'overview'
+  const pathTab = location.pathname.split('/')[2] || 'overview';
+  const tab = ['overview', 'inventory', 'matching', 'aging', 'claimslog'].includes(pathTab)
+    ? pathTab
+    : 'overview';
+
+  function setTab(id) {
+    navigate(`/admin/${id}`);
+  }
   const [stats, setStats] = useState(null);
   const [pendingClaims, setPendingClaims] = useState([]);
   const [inventory, setInventory] = useState([]);
@@ -438,6 +619,12 @@ export default function AdminDashboard() {
   const [toast, setToast] = useState(null);
   const [previewItemId, setPreviewItemId] = useState(null);
   const [showQuickLog, setShowQuickLog] = useState(false);
+  const [editItemId, setEditItemId] = useState(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [claimsLog, setClaimsLog] = useState([]);
+  const [claimsLogFilters, setClaimsLogFilters] = useState({ status: 'all', q: '' });
+  const [claimsLogLoading, setClaimsLogLoading] = useState(false);
 
   function notify(kind, message) { setToast({ kind, message }); }
   function fireChanged() { refreshAll(); }
@@ -464,7 +651,25 @@ export default function AdminDashboard() {
     } finally { setLoading(false); }
   }
 
+  async function loadClaimsLog() {
+    setClaimsLogLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (claimsLogFilters.status !== 'all') params.set('status', claimsLogFilters.status);
+      if (claimsLogFilters.q.trim()) params.set('q', claimsLogFilters.q.trim());
+      const res = await fetch(`${API_BASE}/api/admin/claims/log?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setClaimsLog(await res.json());
+    } catch {}
+    setClaimsLogLoading(false);
+  }
+
   useEffect(() => { if (token) refreshAll(); }, [token]);
+
+  useEffect(() => {
+    if (token && tab === 'claimslog') loadClaimsLog();
+  }, [token, tab, claimsLogFilters]);
 
   const filteredInventory = useMemo(() => {
     return inventory.filter((it) => {
@@ -523,6 +728,51 @@ export default function AdminDashboard() {
 
   function toggleAgingSelected(id) {
     setAgingSelected((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+  }
+
+  async function handleDeleteItem(id) {
+    setDeleting(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/items/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      notify('success', `Deleted "${data.title}".`);
+      setDeleteConfirmId(null);
+      refreshAll();
+    } catch (err) {
+      notify('error', err.message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function handleSaveEdit(updated) {
+    notify('success', `Saved changes to "${updated.title}".`);
+    setEditItemId(null);
+    refreshAll();
+  }
+
+  async function quickSetStatus(item, status, returned) {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/items/${item.id}/set-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status, returned }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      const parts = [];
+      if (status) parts.push(`status = ${status}`);
+      if (returned === true) parts.push('marked as returned');
+      if (returned === false) parts.push('un-marked as returned');
+      notify('success', `"${item.title}" — ${parts.join(' · ')}.`);
+      refreshAll();
+    } catch (err) {
+      notify('error', err.message);
+    }
   }
 
   return (
@@ -723,12 +973,55 @@ export default function AdminDashboard() {
                           <td className="px-3 py-2 text-[11px] text-[#A0B0D0]">{it.days_in_custody}d</td>
                           <td className="px-3 py-2"><Pill text={s.label} className={s.cls} /></td>
                           <td className="px-3 py-2 text-right">
-                            <button
-                              onClick={() => setPreviewItemId(it.id)}
-                              className="rounded-md border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] text-[#A0B0D0] hover:bg-white/[0.06] hover:text-white"
-                            >
-                              View
-                            </button>
+                            <div className="flex flex-wrap items-center justify-end gap-1.5">
+                              <select
+                                value={it.status}
+                                onChange={(e) => quickSetStatus(it, e.target.value, undefined)}
+                                className="rounded-md border border-white/10 bg-[#0A1128]/60 px-1.5 py-1 text-[11px] text-white outline-none focus:border-[#2A5CFF]"
+                                title="Change status"
+                              >
+                                <option value="found" className="text-black">Unclaimed</option>
+                                <option value="claimed" className="text-black">Approved</option>
+                                <option value="lost" className="text-black">Lost</option>
+                              </select>
+
+                              {it.returned_at ? (
+                                <button
+                                  onClick={() => quickSetStatus(it, undefined, false)}
+                                  className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-300 hover:bg-amber-500/20"
+                                  title="Undo returned"
+                                >
+                                  Undo returned
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => quickSetStatus(it, undefined, true)}
+                                  className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-500/20"
+                                  title="Mark as physically returned"
+                                >
+                                  Mark returned
+                                </button>
+                              )}
+
+                              <button
+                                onClick={() => setPreviewItemId(it.id)}
+                                className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] text-[#A0B0D0] hover:bg-white/[0.06] hover:text-white"
+                              >
+                                View
+                              </button>
+                              <button
+                                onClick={() => setEditItemId(it.id)}
+                                className="rounded-md border border-[#2A5CFF]/30 bg-[#2A5CFF]/10 px-2 py-1 text-[11px] text-[#A0B0D0] hover:bg-[#2A5CFF]/20 hover:text-white"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirmId({ id: it.id, title: it.title })}
+                                className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-300 hover:bg-red-500/20 hover:text-red-200"
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -816,6 +1109,138 @@ export default function AdminDashboard() {
               )}
             </div>
           )}
+
+          {tab === 'claimslog' && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-3 backdrop-blur-xl">
+                <input
+                  value={claimsLogFilters.q}
+                  onChange={(e) => setClaimsLogFilters((f) => ({ ...f, q: e.target.value }))}
+                  placeholder="Search by username, student ID, email, or item title…"
+                  className="flex-1 rounded-lg border border-white/10 bg-[#0A1128]/60 px-3 py-1.5 text-xs text-white placeholder-[#A0B0D0]/50 outline-none focus:border-[#2A5CFF] focus:ring-2 focus:ring-[#2A5CFF]/40"
+                />
+                <select
+                  value={claimsLogFilters.status}
+                  onChange={(e) => setClaimsLogFilters((f) => ({ ...f, status: e.target.value }))}
+                  className="rounded-lg border border-white/10 bg-[#0A1128]/60 px-3 py-1.5 text-xs text-white outline-none focus:border-[#2A5CFF]"
+                >
+                  <option value="all" className="text-black">All statuses</option>
+                  <option value="pending" className="text-black">Pending</option>
+                  <option value="approved" className="text-black">Approved</option>
+                  <option value="rejected" className="text-black">Rejected</option>
+                </select>
+                <button
+                  onClick={loadClaimsLog}
+                  className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-white/80 hover:bg-white/[0.06]"
+                >
+                  Refresh
+                </button>
+              </div>
+
+              <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-white/10 text-[10px] uppercase tracking-wider text-[#A0B0D0]">
+                    <tr>
+                      <th className="px-3 py-2">ID</th>
+                      <th className="px-3 py-2">Claimant</th>
+                      <th className="px-3 py-2">Item</th>
+                      <th className="px-3 py-2">Submitted</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">History</th>
+                      <th className="px-3 py-2 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {claimsLogLoading && claimsLog.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="px-3 py-6 text-center text-xs text-[#A0B0D0]">
+                          Loading claims…
+                        </td>
+                      </tr>
+                    )}
+                    {!claimsLogLoading && claimsLog.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="px-3 py-6 text-center text-xs text-[#A0B0D0]">
+                          No claims match these filters.
+                        </td>
+                      </tr>
+                    )}
+                    {claimsLog.map((c) => {
+                      const s = statusMeta[c.status] || statusMeta.pending;
+                      const pendingCount =
+                        Number(c.claimant_total_claims) -
+                        Number(c.claimant_approved_claims) -
+                        Number(c.claimant_rejected_claims);
+                      return (
+                        <tr key={c.id} className="hover:bg-white/[0.02]">
+                          <td className="px-3 py-2 text-[11px] text-[#A0B0D0]">{c.id}</td>
+                          <td className="px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-medium text-white">
+                                {c.claimant_full_name || c.claimant}
+                              </p>
+                              <p className="truncate text-[10px] text-[#A0B0D0]">
+                                {c.claimant_student_id || '—'} · @{c.claimant}
+                              </p>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <div className="h-7 w-7 shrink-0 overflow-hidden rounded-md border border-white/10 bg-black/30">
+                                {c.item_image_url ? (
+                                  <img src={`http://localhost:5000${c.item_image_url}`} alt="" className="h-full w-full object-cover" />
+                                ) : null}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="truncate text-xs text-white">{c.item_title}</p>
+                                <p className="truncate text-[10px] text-[#A0B0D0]">{c.item_storage || '—'}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-[11px] text-[#A0B0D0]">
+                            {new Date(c.claim_date).toLocaleString()}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Pill text={s.label} className={s.cls} />
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-1 text-[10px]">
+                              <span
+                                className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300"
+                                title="Approved claims by this user"
+                              >
+                                ✓ {c.claimant_approved_claims}
+                              </span>
+                              <span
+                                className="rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-amber-300"
+                                title="Pending claims by this user"
+                              >
+                                ⏳ {pendingCount}
+                              </span>
+                              <span
+                                className="rounded-full border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-red-300"
+                                title="Rejected claims by this user"
+                              >
+                                ✕ {c.claimant_rejected_claims}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <button
+                              onClick={() => setPreviewItemId(c.item_id)}
+                              className="rounded-md border border-[#2A5CFF]/30 bg-[#2A5CFF]/10 px-2 py-1 text-[11px] text-[#A0B0D0] hover:bg-[#2A5CFF]/20 hover:text-white"
+                            >
+                              View item
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -838,6 +1263,41 @@ export default function AdminDashboard() {
             refreshAll();
           }}
         />
+      )}
+      {editItemId && (
+        <EditItemModal
+          token={token}
+          itemId={editItemId}
+          onClose={() => setEditItemId(null)}
+          onSaved={handleSaveEdit}
+        />
+      )}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={() => setDeleteConfirmId(null)}>
+          <div className="w-full max-w-sm rounded-2xl border border-red-500/30 bg-[#0A1128] p-5" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-sm font-semibold text-white">Delete this item?</h2>
+            <p className="mt-2 text-xs text-[#A0B0D0]">
+              You're about to permanently delete <strong className="text-white">"{deleteConfirmId.title}"</strong>.
+              This removes the item, its photos, and any claims linked to it. This cannot be undone.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                disabled={deleting}
+                className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-white/80 hover:bg-white/[0.06] disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteItem(deleteConfirmId.id)}
+                disabled={deleting}
+                className="rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/30 disabled:opacity-40"
+              >
+                {deleting ? 'Deleting…' : 'Yes, delete permanently'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
