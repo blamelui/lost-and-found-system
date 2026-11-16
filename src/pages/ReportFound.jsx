@@ -43,7 +43,7 @@ const TIME_PILLS = [
 ];
 
 export default function ReportFound() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigate = useNavigate();
   const titleRef = useRef(null);
   const [searchParams] = useSearchParams();
@@ -73,46 +73,48 @@ export default function ReportFound() {
   const categoryRequiresOther = form.category === 'other';
   const requiresDropoff = form.custody === 'office';
 
-useEffect(() => { titleRef.current?.focus(); }, []);
+  useEffect(() => { titleRef.current?.focus(); }, []);
 
-// If a linked_lost_id was passed (e.g. from the Search page's "I Found This" button),
-// fetch that lost item and auto-fill the title + category, and mark it as linked.
-useEffect(() => {
-  if (!prefillLostId) return;
-  let cancelled = false;
-  async function prefill() {
-    try {
-      const res = await fetch(`${API_BASE}/api/items/${prefillLostId}`);
-      if (!res.ok) return;
-      const lost = await res.json();
-      if (cancelled) return;
+  // If a linked_lost_id was passed, fetch that lost item and auto-fill
+  useEffect(() => {
+    if (!prefillLostId) return;
+    let cancelled = false;
+    async function prefill() {
+      try {
+        const res = await fetch(`${API_BASE}/api/items/${prefillLostId}`);
+        if (!res.ok) return;
+        const lost = await res.json();
+        if (cancelled) return;
 
-      // Fill what we know
-      setForm((f) => ({
-        ...f,
-        title: lost.title || f.title,
-        category: lost.category || f.category,
-        category_other: lost.category_other || f.category_other,
-        color_pill: lost.color_pill || lost.color || f.color_pill,
-        last_location_select: lost.last_location || f.last_location_select,
-      }));
+        // Block if this lost report belongs to the current user
+        if (user?.id && lost.user_id && Number(lost.user_id) === Number(user.id)) {
+          setError('You cannot report your own lost item as found. Ask someone else to report it, or contact the admin office.');
+          return;
+        }
 
-      // Mark as linked so the banner appears and the submit sends linked_lost_id
-      setLinkedLostId(lost.id);
-      setLinkedLost({
-        id: lost.id,
-        title: lost.title,
-        reporter: lost.reporter || 'a student',
-        last_location: lost.last_location,
-      });
-    } catch {
-      // Silent — user can still fill the form manually
+        setForm((f) => ({
+          ...f,
+          title: lost.title || f.title,
+          category: lost.category || f.category,
+          category_other: lost.category_other || f.category_other,
+          color_pill: lost.color_pill || lost.color || f.color_pill,
+          last_location_select: lost.last_location || f.last_location_select,
+        }));
+
+        setLinkedLostId(lost.id);
+        setLinkedLost({
+          id: lost.id,
+          title: lost.title,
+          reporter: lost.reporter || 'a student',
+          last_location: lost.last_location,
+        });
+      } catch {}
     }
-  }
-  prefill();
-  return () => { cancelled = true; };
-}, [prefillLostId]);
+    prefill();
+    return () => { cancelled = true; };
+  }, [prefillLostId, user?.id]);
 
+  // Live search for lost matches
   useEffect(() => {
     if (linkedLostId) return;
     const q = form.title.trim();
@@ -121,12 +123,19 @@ useEffect(() => {
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(`${API_BASE}/api/items/lost/search?q=${encodeURIComponent(q)}`);
-        if (res.ok) setLiveMatches(await res.json());
+        if (res.ok) {
+          const all = await res.json();
+          // Hide the user's own lost reports from "possible matches"
+          const filtered = Array.isArray(all) && user?.id
+            ? all.filter((m) => Number(m.user_id) !== Number(user.id))
+            : all;
+          setLiveMatches(filtered);
+        }
       } catch {}
       setSearching(false);
     }, 350);
     return () => clearTimeout(timer);
-  }, [form.title, linkedLostId]);
+  }, [form.title, linkedLostId, user?.id]);
 
   function onFilesChange(e) {
     const files = Array.from(e.target.files || []);

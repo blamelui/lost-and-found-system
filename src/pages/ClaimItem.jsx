@@ -139,6 +139,7 @@ export default function ClaimItem() {
     setSubmitError(null);
     setProofError(null);
 
+    // ---- Validation: show specific errors, never fail silently ----
     if (!proof.trim()) {
       setProofError('Please describe the unique details of this item — proof of ownership is required.');
       return;
@@ -204,6 +205,7 @@ export default function ClaimItem() {
   const catLabel = item.category === 'other' ? item.category_other || 'Other' : (item.category || '').replace(/_/g, ' ');
   const imageUrl = item.image_url ? `http://localhost:5000${item.image_url}` : null;
   const alreadyClaimed = itemStatus === 'claimed';
+  const isOwnItem = Number(item.user_id) === Number(user?.id);
 
   /* Confirmation view */
   if (isSubmitted && submittedClaim) {
@@ -311,7 +313,6 @@ export default function ClaimItem() {
   /* Form view */
   const proofTrimmed = proof.trim();
   const proofValid = proofTrimmed.length >= 20;
-  const formReady = proofValid && declared && !alreadyClaimed;
 
   return (
     <div className="relative mx-auto max-w-3xl">
@@ -332,11 +333,13 @@ export default function ClaimItem() {
             </p>
           </div>
           <Pill
-            text={formReady ? 'Ready to submit' : `${[proofValid, declared].filter(Boolean).length}/2 required`}
+            text={isOwnItem ? 'Your report' : proofValid && declared ? 'Ready to submit' : `${[proofValid, declared].filter(Boolean).length}/2 required`}
             className={
-              formReady
-                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                : 'bg-white/[0.04] text-[#A0B0D0] border-white/15'
+              isOwnItem
+                ? 'bg-red-500/15 text-red-300 border-red-500/30'
+                : proofValid && declared
+                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                  : 'bg-white/[0.04] text-[#A0B0D0] border-white/15'
             }
           />
         </div>
@@ -380,6 +383,12 @@ export default function ClaimItem() {
       {alreadyClaimed && (
         <div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-300">
           This item has already been returned to its owner. You can no longer submit a claim.
+        </div>
+      )}
+
+      {isOwnItem && (
+        <div className="mb-3 rounded-xl border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-xs text-red-300">
+          <strong>You reported this item.</strong> You can&apos;t claim an item you found and reported yourself.
         </div>
       )}
 
@@ -590,11 +599,15 @@ export default function ClaimItem() {
             </button>
             <div className="flex items-center gap-2">
               <span className="hidden text-[10px] text-[#A0B0D0]/60 sm:block">
-                {proofValid && declared ? 'Ready' : 'Complete required fields'}
+                {isOwnItem
+                  ? 'Cannot claim your own item'
+                  : proofValid && declared
+                    ? 'Ready'
+                    : 'Complete required fields'}
               </span>
               <button
                 type="submit"
-                disabled={isSubmitting || !formReady}
+                disabled={isSubmitting || isOwnItem || alreadyClaimed}
                 className="rounded-lg bg-gradient-to-r from-[#2A5CFF] to-[#1C3F95] px-4 py-2 text-sm font-semibold text-white shadow-[0_0_20px_rgba(42,92,255,0.4)] transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
               >
                 {isSubmitting ? (

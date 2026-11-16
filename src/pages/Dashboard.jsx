@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -32,6 +32,7 @@ function StatusPill({ status }) {
 }
 
 function ItemRow({ item, isNew, isLeaving }) {
+  const qty = Number(item.quantity);
   return (
     <li
       className={`flex items-start justify-between gap-3 py-3 transition-all duration-500 ${
@@ -41,9 +42,14 @@ function ItemRow({ item, isNew, isLeaving }) {
       <div className="min-w-0 flex-1">
         <Link
           to={`/items/${item.id}`}
-          className="truncate text-sm text-white transition hover:text-[#2A5CFF]"
+          className="inline-flex max-w-full items-center gap-1.5 truncate text-sm text-white transition hover:text-[#2A5CFF]"
         >
-          {item.title}
+          <span className="truncate">{item.title}</span>
+          {qty > 1 && (
+            <span className="shrink-0 rounded-full border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium text-[#A0B0D0]">
+              ×{qty}
+            </span>
+          )}
         </Link>
         <p className="mt-0.5 text-xs text-[#A0B0D0]">
           by {item.reporter} · {new Date(item.created_at).toLocaleString()}
@@ -72,7 +78,7 @@ function ItemRow({ item, isNew, isLeaving }) {
 }
 
 function ItemList({ items, emptyText, emptyCta, prevIds }) {
-  if (items.length === 0) {
+  if (!Array.isArray(items) || items.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.02] p-5 text-center">
         <p className="text-sm text-[#A0B0D0]">{emptyText}</p>
@@ -107,7 +113,7 @@ export default function Dashboard() {
   const prevLostIds = useRef(new Set());
   const prevFoundIds = useRef(new Set());
 
-  async function load(showSpinner = false) {
+  const load = useCallback(async (showSpinner = false) => {
     if (showSpinner) setRefreshing(true);
     try {
       const res = await fetch(`${API_BASE}/api/dashboard`);
@@ -122,7 +128,7 @@ export default function Dashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     load();
@@ -136,7 +142,36 @@ export default function Dashboard() {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, []);
+  }, [load]);
+
+  const safe = data && typeof data === 'object' ? data : {};
+  const stats = safe.stats && typeof safe.stats === 'object' ? safe.stats : {};
+  const items = stats.items && typeof stats.items === 'object' ? stats.items : {};
+  const claims = stats.claims && typeof stats.claims === 'object' ? stats.claims : {};
+  const recentItems = Array.isArray(safe.recentItems) ? safe.recentItems : [];
+  const recentClaims = Array.isArray(safe.recentClaims) ? safe.recentClaims : [];
+
+  const resolvedLostIds = new Set(
+    recentItems
+      .filter((i) => Number(i.resolved_by_found_count) > 0)
+      .map((i) => i.id)
+  );
+
+  const recentLost = recentItems
+    .filter((i) => i.status === 'lost' && !resolvedLostIds.has(i.id))
+    .slice(0, 5);
+
+  const recentFound = recentItems
+    .filter((i) => i.status === 'found')
+    .slice(0, 5);
+
+  const newLostIds = new Set(recentLost.map((i) => i.id));
+  const newFoundIds = new Set(recentFound.map((i) => i.id));
+
+  useEffect(() => {
+    prevLostIds.current = newLostIds;
+    prevFoundIds.current = newFoundIds;
+  }, [data]);
 
   if (loading) {
     return (
@@ -158,38 +193,8 @@ export default function Dashboard() {
     );
   }
 
-  const { stats, recentItems, recentClaims } = data;
-
-  // A lost item is "resolved" if a found report has been linked to it.
-  // It appears in Recent Found as the current state and is hidden from Recent Lost.
-  const resolvedLostIds = new Set(
-    recentItems
-      .filter((i) => Number(i.resolved_by_found_count) > 0)
-      .map((i) => i.id)
-  );
-
-  const recentLost = recentItems
-    .filter((i) => i.status === 'lost' && !resolvedLostIds.has(i.id))
-    .slice(0, 5);
-
-  const recentFound = recentItems
-    .filter((i) => i.status === 'found')
-    .slice(0, 5);
-
-  const newLostIds = new Set(recentLost.map((i) => i.id));
-  const newFoundIds = new Set(recentFound.map((i) => i.id));
-
-  const lostChanged = [...newLostIds].some((id) => !prevLostIds.current.has(id));
-  const foundChanged = [...newFoundIds].some((id) => !prevFoundIds.current.has(id));
-
-  if (lostChanged || foundChanged) {
-    prevLostIds.current = newLostIds;
-    prevFoundIds.current = newFoundIds;
-  }
-
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
@@ -198,6 +203,11 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {error && data && (
+            <span className="text-[10px] uppercase tracking-wider text-red-300/80">
+              Refresh failed
+            </span>
+          )}
           {lastUpdated && (
             <span className="text-[10px] uppercase tracking-wider text-[#A0B0D0]/60">
               Updated {lastUpdated.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
@@ -231,28 +241,26 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           label="Items Reported"
-          value={stats.items.total}
-          sub={`${stats.items.lost} lost · ${stats.items.found} found · ${stats.items.claimed} claimed`}
+          value={items.total ?? 0}
+          sub={`${items.lost ?? 0} lost · ${items.found ?? 0} found · ${items.claimed ?? 0} claimed`}
         />
         <StatCard
           label="Claims"
-          value={stats.claims.total}
-          sub={`${stats.claims.pending} pending · ${stats.claims.approved} approved`}
+          value={claims.total ?? 0}
+          sub={`${claims.pending ?? 0} pending · ${claims.approved ?? 0} approved`}
           accent="text-amber-300"
         />
         <StatCard
           label="Pending Claims"
-          value={stats.claims.pending}
+          value={claims.pending ?? 0}
           sub="Awaiting review"
           accent="text-amber-300"
         />
       </div>
 
-      {/* Recent Lost + Recent Found */}
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 backdrop-blur-xl">
           <div className="mb-3 flex items-center justify-between">
@@ -299,7 +307,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Recent Claims */}
       <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 backdrop-blur-xl">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold tracking-tight">Recent Claims</h2>

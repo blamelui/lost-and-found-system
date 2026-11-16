@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+//import ErrorBoundary from '../components/ErrorBoundary';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -48,13 +49,13 @@ const Icon = {
   ),
 };
 
-  const ADMIN_TABS = [
-    { id: 'overview',  label: 'Overview' },
-    { id: 'inventory', label: 'Inventory' },
-    { id: 'matching',  label: 'Lost ↔ Found' },
-    { id: 'aging',     label: 'Aging & Retention' },
-    { id: 'claimslog', label: 'Claims Log' },
-  ];
+const ADMIN_TABS = [
+  { id: 'overview',  label: 'Overview' },
+  { id: 'inventory', label: 'Inventory' },
+  { id: 'matching',  label: 'Lost ↔ Found' },
+  { id: 'aging',     label: 'Aging & Retention' },
+  { id: 'claimslog', label: 'Claims Log' },
+];
 
 function NavItem({ to, icon, label, badge }) {
   return (
@@ -97,7 +98,6 @@ function SectionLabel({ children }) {
   );
 }
 
-/* ---------- Notification meta ---------- */
 const notifMeta = {
   claim_approved:        { icon: '✓', color: 'text-emerald-300 bg-emerald-500/15' },
   claim_rejected:        { icon: '✕', color: 'text-red-300 bg-red-500/15' },
@@ -146,8 +146,14 @@ export default function AppLayout() {
           fetch(`${API_BASE}/api/notifications/unread-count`, { headers }),
         ]);
         if (cancelled) return;
-        if (listRes.ok) setNotifications(await listRes.json());
-        if (countRes.ok) setUnreadCount((await countRes.json()).count);
+        if (listRes.ok) {
+          const j = await listRes.json();
+          setNotifications(Array.isArray(j) ? j : (Array.isArray(j?.notifications) ? j.notifications : []));
+        }
+        if (countRes.ok) {
+          const j = await countRes.json();
+          setUnreadCount(typeof j?.count === 'number' ? j.count : 0);
+        }
       } catch {}
     }
     load();
@@ -425,7 +431,7 @@ export default function AppLayout() {
                   </div>
 
                   <div className="max-h-[26rem] overflow-y-auto">
-                    {notifications.length === 0 ? (
+                    {!Array.isArray(notifications) || notifications.length === 0 ? (
                       <div className="p-6 text-center">
                         <p className="text-xs text-[#A0B0D0]">No notifications yet.</p>
                       </div>
@@ -482,7 +488,9 @@ export default function AppLayout() {
         </header>
 
         <main className="flex-1 px-4 py-5 sm:px-6 lg:px-8">
+          {/* <ErrorBoundary> */}
           <Outlet />
+          {/* </ErrorBoundary> */}
         </main>
       </div>
     </div>

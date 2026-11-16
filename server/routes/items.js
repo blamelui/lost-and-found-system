@@ -39,7 +39,7 @@ router.post('/lost', requireAuth, upload.single('photo'), async (req, res) => {
   const {
     title, brand, color, category, category_other,
     description, last_location, lost_at, urgency,
-    reporter_role, contact_pref,
+    reporter_role, contact_pref, quantity,
   } = req.body || {};
 
   if (!title || !String(title).trim()) return res.status(400).json({ error: 'title is required' });
@@ -62,6 +62,15 @@ router.post('/lost', requireAuth, upload.single('photo'), async (req, res) => {
   if (!['low', 'normal', 'high'].includes(urgencyValue)) return res.status(400).json({ error: 'invalid urgency' });
   if (!urgency && ['keys_ids', 'electronics'].includes(category)) urgencyValue = 'high';
 
+  let quantityValue = 1;
+  if (quantity !== undefined && quantity !== '' && quantity !== null) {
+    const n = Number(quantity);
+    if (!Number.isInteger(n) || n < 1 || n > 999) {
+      return res.status(400).json({ error: 'Quantity must be a whole number between 1 and 999.' });
+    }
+    quantityValue = n;
+  }
+
   let lostAtValue = new Date();
   if (lost_at) {
     const parsed = new Date(lost_at);
@@ -77,12 +86,12 @@ router.post('/lost', requireAuth, upload.single('photo'), async (req, res) => {
 
     const [result] = await conn.query(
       `INSERT INTO items
-        (user_id, title, brand, color, category, category_other,
+        (user_id, title, quantity, brand, color, category, category_other,
          description, image_url, last_location, lost_at, urgency,
          reporter_role, contact_pref, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'lost')`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'lost')`,
       [
-        req.user.id, String(title).trim(),
+        req.user.id, String(title).trim(), quantityValue,
         brand ? String(brand).trim() : null,
         color ? String(color).trim() : null,
         category,
@@ -142,7 +151,7 @@ router.get('/lost', async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      `SELECT i.id, i.title, i.brand, i.color, i.category, i.category_other,
+      `SELECT i.id, i.title, i.quantity, i.brand, i.color, i.category, i.category_other,
               i.description, i.image_url, i.last_location, i.lost_at, i.urgency,
               i.reporter_role, i.contact_pref, i.status, i.created_at,
               u.username AS reporter
@@ -167,7 +176,7 @@ router.get('/lost/search', async (req, res) => {
   const prefix = `${q}%`;
   try {
     const [rows] = await pool.query(
-      `SELECT i.id, i.title, i.category, i.color, i.last_location, i.lost_at,
+      `SELECT i.id, i.user_id, i.title, i.quantity, i.category, i.color, i.last_location, i.lost_at,
               i.description, i.image_url, i.urgency,
               u.username AS reporter
          FROM items i JOIN users u ON u.id = i.user_id
@@ -231,6 +240,7 @@ router.post('/found', requireAuth, upload.array('photos', 3), async (req, res) =
     await conn.beginTransaction();
 
     let linkedLostId = null;
+
     if (linked_lost_id) {
       const n = Number(linked_lost_id);
       if (Number.isInteger(n) && n > 0) {
@@ -238,6 +248,26 @@ router.post('/found', requireAuth, upload.array('photos', 3), async (req, res) =
           `SELECT id FROM items WHERE id = ? AND status = 'lost'`, [n]
         );
         if (check.length > 0) linkedLostId = n;
+      }
+    }
+
+    if (!linkedLostId) {
+      const [auto] = await conn.query(
+        `SELECT id, user_id FROM items
+          WHERE status = 'lost'
+            AND LOWER(title) = LOWER(?)
+          ORDER BY created_at ASC
+          LIMIT 1`,
+        [String(title).trim()]
+      );
+      if (auto.length > 0) {
+        if (Number(auto[0].user_id) === Number(req.user.id)) {
+          await conn.rollback();
+          return res.status(400).json({
+            error: 'You cannot report the same item as found if you reported it as lost. Ask a different person to report the found item, or contact the admin office.',
+          });
+        }
+        linkedLostId = auto[0].id;
       }
     }
 
@@ -410,15 +440,17 @@ router.get('/search', async (req, res) => {
 
   const where = [];
   const params = [];
-
   const typeValue = type === 'lost' ? 'lost' : 'found';
 
-  if (status === 'all') {
-    where.push('i.status IN (?, ?)');
-    params.push('lost', 'found');
+  if (typeValue === 'lost') {
+    where.push("i.status = 'lost'");
+    where.push('NOT EXISTS (SELECT 1 FROM items f WHERE f.linked_lost_id = i.id)');
   } else {
-    where.push('i.status = ?');
-    params.push(typeValue);
+    if (status === 'all') {
+      where.push("i.status IN ('found', 'claimed')");
+    } else {
+      where.push("i.status = 'found'");
+    }
   }
 
   const qTrim = String(q).trim();
@@ -452,7 +484,7 @@ router.get('/search', async (req, res) => {
 
     const [rows] = await pool.query(
       `SELECT
-         i.id, i.title, i.category, i.category_other, i.color, i.color_pill,
+         i.id, i.user_id, i.title, i.quantity, i.category, i.category_other, i.color, i.color_pill,
          i.brand, i.description, i.image_url, i.last_location,
          i.lost_at, i.created_at, i.urgency, i.status, i.photo_blur,
          (SELECT c.status FROM claims c
@@ -467,7 +499,9 @@ router.get('/search', async (req, res) => {
 
     const cleaned = rows.map((r) => ({
       id: r.id,
+      user_id: r.user_id,
       title: r.title,
+      quantity: r.quantity,
       category: r.category,
       category_other: r.category_other,
       color: r.color,
@@ -504,7 +538,7 @@ router.get('/:id', async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      `SELECT i.id, i.title, i.brand, i.color, i.color_pill, i.category, i.category_other,
+      `SELECT i.id, i.user_id, i.title, i.quantity, i.brand, i.color, i.color_pill, i.category, i.category_other,
               i.description, i.image_url, i.last_location, i.lost_at, i.urgency,
               i.reporter_role, i.contact_pref, i.status, i.created_at,
               i.custody, i.dropoff_location, i.tag_number, i.anonymous, i.photo_blur,

@@ -180,6 +180,20 @@ router.post('/claims/:id/approve', requireAuth, requireAdmin, async (req, res) =
       [pickup_instructions ? String(pickup_instructions).trim() : null, itemId]
     );
 
+    /* Close the linked lost report so it stops showing as "Lost". */
+    const [linked] = await conn.query(
+      `SELECT linked_lost_id FROM items WHERE id = ?`, [itemId]
+    );
+    if (linked[0]?.linked_lost_id) {
+      await conn.query(
+        `UPDATE items
+            SET status = 'claimed'
+          WHERE id = ?
+            AND status = 'lost'`,
+        [linked[0].linked_lost_id]
+      );
+    }
+
     await conn.query(
       `INSERT INTO notifications (user_id, type, title, body, link)
        SELECT claimant_id, 'claim_approved',
@@ -268,7 +282,10 @@ router.post('/items/:id/returned', requireAuth, requireAdmin, async (req, res) =
 
 router.get('/inventory', requireAuth, requireAdmin, async (req, res) => {
   const { status, category, q, limit } = req.query;
-  const where = ['archived_at IS NULL'];
+  const where = [
+    'archived_at IS NULL',
+    "NOT (status = 'lost' AND EXISTS (SELECT 1 FROM items f WHERE f.linked_lost_id = items.id))",
+  ];
   const params = [];
 
   if (status && status !== 'all') {
@@ -368,6 +385,7 @@ router.get('/lost-reports', requireAuth, requireAdmin, async (req, res) => {
              DATEDIFF(CURDATE(), DATE(i.created_at)) AS days_open
         FROM items i JOIN users u ON u.id = i.user_id
        WHERE i.status = 'lost' AND i.archived_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM items f WHERE f.linked_lost_id = i.id)
        ORDER BY i.created_at DESC
        LIMIT 100
     `);
@@ -393,16 +411,17 @@ router.post('/link-manual', requireAuth, requireAdmin, async (req, res) => {
     await conn.beginTransaction();
 
     const [lostRows] = await conn.query(
-      `SELECT id, user_id, title FROM items WHERE id = ? AND status = 'lost'`, [lostId]
+      `SELECT id, user_id, title FROM items WHERE id = ?`, [lostId]
     );
     const [foundRows] = await conn.query(
-      `SELECT id, title FROM items WHERE id = ? AND status = 'found' AND returned_at IS NULL`, [foundId]
+      `SELECT id, title FROM items WHERE id = ?`, [foundId]
     );
     if (lostRows.length === 0)  { await conn.rollback(); return res.status(404).json({ error: 'Lost report not found or not open' }); }
     if (foundRows.length === 0) { await conn.rollback(); return res.status(404).json({ error: 'Found item not found or not unclaimed' }); }
 
     await conn.query(`UPDATE items SET linked_lost_id = ? WHERE id = ?`, [lostId, foundId]);
     await conn.query(`UPDATE items SET status = 'claimed' WHERE id = ?`, [foundId]);
+    await conn.query(`UPDATE items SET status = 'claimed' WHERE id = ? AND status = 'lost'`, [lostId]);
 
     await conn.query(
       `INSERT INTO notifications (user_id, type, title, body, link)

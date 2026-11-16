@@ -61,6 +61,16 @@ function Pill({ text, className = '' }) {
   );
 }
 
+function QtyBadge({ quantity }) {
+  const qty = Number(quantity);
+  if (!(qty > 1)) return null;
+  return (
+    <span className="shrink-0 rounded-full border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium text-[#A0B0D0]">
+      ×{qty}
+    </span>
+  );
+}
+
 export default function Search() {
   const navigate = useNavigate();
   const inputRef = useRef(null);
@@ -81,7 +91,6 @@ export default function Search() {
   const [hasMore, setHasMore] = useState(false);
   const [previewItem, setPreviewItem] = useState(null);
 
-  // Close modal on Escape
   useEffect(() => {
     if (!previewItem) return;
     function onKey(e) {
@@ -230,18 +239,21 @@ export default function Search() {
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
-          <label className="flex cursor-pointer items-center gap-1.5 text-[#A0B0D0]">
+          <label className={`flex items-center gap-1.5 ${type === 'lost' ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} text-[#A0B0D0]`}>
             <input
               type="checkbox"
+              disabled={type === 'lost'}
               checked={status === 'all'}
               onChange={(e) => setStatus(e.target.checked ? 'all' : 'active')}
               className="h-3.5 w-3.5 rounded border-white/20 accent-[#2A5CFF]"
             />
-            Include returned items
+            Include returned/claimed items
           </label>
           <span className="text-[#A0B0D0]/40">·</span>
           <span className="text-[#A0B0D0]/70">
-            Showing {type === 'found' ? 'found' : 'lost'} {status === 'all' ? 'and returned' : '(active only)'}
+            {type === 'lost'
+              ? 'Showing active lost reports'
+              : `Showing found items ${status === 'all' ? '(active + returned)' : '(active only)'}`}
           </span>
         </div>
       </div>
@@ -343,7 +355,6 @@ export default function Search() {
         </div>
       )}
 
-      {/* Preview modal */}
       {previewItem && (
         <ItemPreviewModal
           item={previewItem}
@@ -369,6 +380,13 @@ function ItemPreviewModal({ item, onClose, onClaim, onFoundThis }) {
   const imgUrl = item.image_url ? `http://localhost:5000${item.image_url}` : null;
   const showImage = imgUrl && !item.photo_blur;
 
+  let dateContext = '';
+  if (whenLabel) {
+    if (item.status === 'lost') dateContext = `Lost ${whenLabel}`;
+    else if (item.status === 'claimed') dateContext = `Returned ${whenLabel}`;
+    else dateContext = `Found ${whenLabel}`;
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
@@ -378,7 +396,6 @@ function ItemPreviewModal({ item, onClose, onClaim, onFoundThis }) {
         className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/15 bg-[#0A1128] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Close button */}
         <button
           onClick={onClose}
           className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-black/60 text-white/80 transition hover:bg-black/90 hover:text-white"
@@ -389,7 +406,6 @@ function ItemPreviewModal({ item, onClose, onClaim, onFoundThis }) {
           </svg>
         </button>
 
-        {/* Image */}
         <div className="relative aspect-[4/3] w-full overflow-hidden bg-black/40">
           {showImage ? (
             <img src={imgUrl} alt={item.title} className="h-full w-full object-cover" />
@@ -410,25 +426,26 @@ function ItemPreviewModal({ item, onClose, onClaim, onFoundThis }) {
               )}
             </div>
           )}
-          {/* Pills overlay */}
           <div className="absolute left-2 top-2 flex flex-wrap gap-1">
             <Pill text={s.label} className={s.cls} />
             {c && <Pill text={c.label} className={c.cls} />}
           </div>
         </div>
 
-        {/* Body */}
         <div className="space-y-3 p-4">
           <div>
             <div className="flex flex-wrap items-center gap-1.5">
               <Pill text={cat} className="border-white/15 bg-white/[0.04] text-[#A0B0D0]" />
               {item.urgency === 'high' && <Pill text="High priority" className="bg-red-500/15 text-red-300 border-red-500/30" />}
             </div>
-            <h2 className="mt-1.5 text-base font-semibold text-white">{item.title}</h2>
+            <h2 className="mt-1.5 flex items-center gap-2 text-base font-semibold text-white">
+              <span>{item.title}</span>
+              <QtyBadge quantity={item.quantity} />
+            </h2>
             <p className="mt-1 text-xs text-[#A0B0D0]">
               {item.last_location && <span>📍 {item.last_location}</span>}
-              {item.last_location && whenLabel && <span> · </span>}
-              {whenLabel && <span>{item.status === 'lost' ? 'Lost' : 'Found'} {whenLabel}</span>}
+              {item.last_location && dateContext && <span> · </span>}
+              {dateContext && <span>{dateContext}</span>}
             </p>
           </div>
 
@@ -453,7 +470,6 @@ function ItemPreviewModal({ item, onClose, onClaim, onFoundThis }) {
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex flex-wrap gap-2 pt-1">
             {item.status === 'found' && !item.claim_status && (
               <button
@@ -512,6 +528,13 @@ function ResultCard({ item, onPreview }) {
   const imgUrl = item.image_url ? `http://localhost:5000${item.image_url}` : null;
   const showImage = imgUrl && !item.photo_blur;
 
+  let dateContext = '';
+  if (whenLabel) {
+    if (item.status === 'lost') dateContext = `Lost ${whenLabel}`;
+    else if (item.status === 'claimed') dateContext = `Returned ${whenLabel}`;
+    else dateContext = `Found ${whenLabel}`;
+  }
+
   return (
     <div className="group flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl transition hover:border-white/20">
       <div className="relative aspect-[4/3] w-full overflow-hidden bg-black/30">
@@ -544,14 +567,17 @@ function ResultCard({ item, onPreview }) {
 
       <div className="flex flex-1 flex-col gap-2 p-3">
         <div>
-          <h3 className="line-clamp-1 text-sm font-semibold text-white">{title}</h3>
+          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-white">
+            <span className="line-clamp-1">{title}</span>
+            <QtyBadge quantity={item.quantity} />
+          </h3>
           <p className="mt-0.5 text-[11px] text-[#A0B0D0]">{cat}</p>
         </div>
 
         <div className="text-[11px] text-[#A0B0D0]">
           {item.last_location && <span>📍 {item.last_location}</span>}
-          {item.last_location && whenLabel && <span> · </span>}
-          {whenLabel && <span>{item.status === 'lost' ? 'Lost' : 'Found'} {whenLabel}</span>}
+          {item.last_location && dateContext && <span> · </span>}
+          {dateContext && <span>{dateContext}</span>}
         </div>
 
         {item.description && (

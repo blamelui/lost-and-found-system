@@ -66,7 +66,9 @@ router.post('/', requireAuth, upload.single('supporting_image'), async (req, res
       return res.status(400).json({ error: 'This item is not currently claimable.' });
     }
 
-    if (item.user_id === req.user.id) {
+    // FIX: Cast both sides to Number — MySQL returns user_id as number,
+    // JWT may store id as string. "5" === 5 is false; Number("5") === Number(5) is true.
+    if (Number(item.user_id) === Number(req.user.id)) {
       await conn.rollback();
       return res.status(400).json({ error: 'You cannot claim an item you reported.' });
     }
@@ -161,13 +163,14 @@ router.get('/mine', requireAuth, async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT c.id, c.status, c.claim_date, c.proof, c.lost_context,
-              c.supporting_image_url, c.phone,
-              i.id AS item_id, i.title AS item_title,
+              c.supporting_image_url, c.phone, c.reject_reason,
+              i.id AS item_id,
+              COALESCE(i.title, '(item removed)') AS item_title,
               i.image_url AS item_image_url, i.category AS item_category,
               i.status AS item_status, i.last_location AS item_last_location,
               i.lost_at AS item_found_at
          FROM claims c
-         JOIN items i ON i.id = c.item_id
+         LEFT JOIN items i ON i.id = c.item_id
         WHERE c.claimant_id = ?
         ORDER BY c.claim_date DESC`,
       [req.user.id]

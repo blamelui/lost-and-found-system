@@ -10,26 +10,94 @@ const router = express.Router();
 router.post('/register', async (req, res) => {
   const { fullname, student_id, email, password } = req.body || {};
 
-  if (!fullname || !email || !password) {
-    return res.status(400).json({ error: 'fullname, email, and password are required' });
-  }
-  if (password.length < 8) {
-    return res.status(400).json({ error: 'Password must be at least 8 characters' });
-  }
-  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRe.test(email)) {
-    return res.status(400).json({ error: 'Invalid email address' });
+  // ---- 1. Required fields ----
+  if (!fullname || !email || !password || !student_id) {
+    return res.status(400).json({ error: 'Full name, student ID, email, and password are required.' });
   }
 
-  const username = email.split('@')[0].toLowerCase();
+  const name = String(fullname).trim();
+  const studentId = String(student_id).trim().toUpperCase();
+  const emailLower = String(email).trim().toLowerCase();
+
+  // ---- 2. Server-side format validation (matches frontend LIMITS) ----
+  // Name: 3-50 chars, letters + spaces + . ' - only, no digits
+  if (!/^[A-Za-z\s.'-]{3,50}$/.test(name)) {
+    return res.status(400).json({ error: 'Full name must be 3–50 characters and contain only letters.' });
+  }
+
+  // Student ID: length cap + strict format C-2024-0001
+  if (studentId.length > 15) {
+    return res.status(400).json({ error: 'Student ID must be 15 characters or fewer.' });
+  }
+  if (!/^[A-Z]-\d{4}-\d{3,4}$/.test(studentId)) {
+    return res.status(400).json({ error: 'Student ID must look like C-2024-0001.' });
+  }
+
+  // Email format
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRe.test(emailLower)) {
+    return res.status(400).json({ error: 'Invalid email address.' });
+  }
+
+  // Password strength (matches frontend LIMITS.passwordMinLength)
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  }
+  if (!/[A-Z]/.test(password) || !/\d/.test(password)) {
+    return res.status(400).json({ error: 'Password must contain at least 1 uppercase letter and 1 number.' });
+  }
+  if (/\s/.test(password)) {
+    return res.status(400).json({ error: 'Password cannot contain spaces.' });
+  }
+
+  // Username derived from email prefix (must not contain spaces)
+  const username = emailLower.split('@')[0].replace(/\s+/g, '');
+  if (!username) {
+    return res.status(400).json({ error: 'Could not derive a username from that email.' });
+  }
 
   try {
+    // ---- 3. Duplicate checks ----
+    const [existingEmail] = await pool.query(
+      'SELECT id FROM users WHERE email = ? LIMIT 1',
+      [emailLower]
+    );
+    if (existingEmail.length > 0) {
+      return res.status(409).json({ error: 'This email is already registered.' });
+    }
+
+    const [existingId] = await pool.query(
+      'SELECT id FROM users WHERE student_id = ? LIMIT 1',
+      [studentId]
+    );
+    if (existingId.length > 0) {
+      return res.status(409).json({ error: 'This Student ID is already in use.' });
+    }
+
+    const [existingName] = await pool.query(
+      'SELECT id FROM users WHERE full_name = ? LIMIT 1',
+      [name]
+    );
+    if (existingName.length > 0) {
+      return res.status(409).json({ error: 'An account with this name already exists.' });
+    }
+
+    const [existingUsername] = await pool.query(
+      'SELECT id FROM users WHERE username = ? LIMIT 1',
+      [username]
+    );
+    if (existingUsername.length > 0) {
+      return res.status(409).json({ error: 'That username is already taken.' });
+    }
+
+    // ---- 4. Create the user ----
     const hash = await bcrypt.hash(password, 10);
     const [r] = await pool.query(
       `INSERT INTO users (username, full_name, student_id, email, password_hash, role)
        VALUES (?, ?, ?, ?, ?, 'student')`,
-      [username, fullname.trim(), (student_id || '').trim() || null, email.toLowerCase().trim(), hash]
+      [username, name, studentId, emailLower, hash]
     );
+
     const [rows] = await pool.query(
       `SELECT id, username, full_name, student_id, email, role FROM users WHERE id = ?`,
       [r.insertId]
@@ -38,14 +106,15 @@ router.post('/register', async (req, res) => {
     res.status(201).json({ token: signToken(user), user });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {
-      const msg = String(err.message || '');
-      if (msg.includes('email')) {
-        return res.status(409).json({ error: 'That email is already registered' });
-      }
-      return res.status(409).json({ error: 'That username is already taken' });
+      const msg = String(err.message || '').toLowerCase();
+      if (msg.includes('email')) return res.status(409).json({ error: 'This email is already registered.' });
+      if (msg.includes('student_id')) return res.status(409).json({ error: 'This Student ID is already in use.' });
+      if (msg.includes('full_name')) return res.status(409).json({ error: 'An account with this name already exists.' });
+      if (msg.includes('username')) return res.status(409).json({ error: 'That username is already taken.' });
+      return res.status(409).json({ error: 'An account with these details already exists.' });
     }
     console.error('[auth] register failed:', err);
-    res.status(500).json({ error: 'Registration failed' });
+    res.status(500).json({ error: 'Registration failed.' });
   }
 });
 
@@ -115,14 +184,12 @@ router.post('/forgot-password', async (req, res) => {
     );
     const user = rows[0];
 
-    // Always respond the same way — don't reveal whether the account exists
     if (!user) return res.json(generic);
 
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
-    // Invalidate any previous unused tokens for this user
     await pool.query(`UPDATE password_resets SET used = 1 WHERE user_id = ? AND used = 0`, [user.id]);
     await pool.query(
       `INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES (?, ?, ?)`,
@@ -132,7 +199,6 @@ router.post('/forgot-password', async (req, res) => {
     const frontend = process.env.FRONTEND_URL || 'http://localhost:5173';
     const resetUrl = `${frontend}/reset-password?token=${rawToken}`;
 
-    // No mailer configured yet — log it so you can test locally
     console.log(`[auth] password reset for ${user.email}: ${resetUrl}`);
 
     return res.json(generic);

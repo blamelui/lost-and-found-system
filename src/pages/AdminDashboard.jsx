@@ -641,14 +641,31 @@ export default function AdminDashboard() {
         fetch(`${API_BASE}/api/admin/lost-reports`, { headers }),
         fetch(`${API_BASE}/api/admin/aging`, { headers }),
       ]);
-      if (s.ok) setStats((await s.json()).stats);
-      if (p.ok) setPendingClaims(await p.json());
-      if (inv.ok) setInventory(await inv.json());
-      if (lost.ok) setLostReports(await lost.json());
-      if (age.ok) setAging(await age.json());
+      if (s.ok) {
+        const j = await s.json();
+        setStats(j?.stats && typeof j.stats === 'object' ? j.stats : {});
+      }
+      if (p.ok) {
+        const j = await p.json();
+        setPendingClaims(Array.isArray(j) ? j : Array.isArray(j?.claims) ? j.claims : []);
+      }
+      if (inv.ok) {
+        const j = await inv.json();
+        setInventory(Array.isArray(j) ? j : Array.isArray(j?.items) ? j.items : []);
+      }
+      if (lost.ok) {
+        const j = await lost.json();
+        setLostReports(Array.isArray(j) ? j : Array.isArray(j?.items) ? j.items : []);
+      }
+      if (age.ok) {
+        const j = await age.json();
+        setAging(Array.isArray(j) ? j : Array.isArray(j?.items) ? j.items : []);
+      }
     } catch (e) {
       setError(e.message);
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function loadClaimsLog() {
@@ -660,7 +677,10 @@ export default function AdminDashboard() {
       const res = await fetch(`${API_BASE}/api/admin/claims/log?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) setClaimsLog(await res.json());
+      if (res.ok) {
+        const j = await res.json();
+        setClaimsLog(Array.isArray(j) ? j : Array.isArray(j?.claims) ? j.claims : []);
+      }
     } catch {}
     setClaimsLogLoading(false);
   }
@@ -671,6 +691,7 @@ export default function AdminDashboard() {
     if (token && tab === 'claimslog') loadClaimsLog();
   }, [token, tab, claimsLogFilters]);
 
+  // ---- FIX: build filteredInventory here; it was missing and crashed the inventory tab ----
   const filteredInventory = useMemo(() => {
     return inventory.filter((it) => {
       if (invFilters.status !== 'all') {
@@ -836,9 +857,9 @@ export default function AdminDashboard() {
       {!loading && !error && (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <KpiCard label="Unclaimed Items"      value={stats?.items.found ?? 0}    sub="Found items awaiting a claim" />
-            <KpiCard label="Pending Claims"       value={stats?.claims.pending ?? 0} sub="Needs review" accent="text-amber-300" />
-            <KpiCard label="Open Lost Reports"    value={stats?.items.lost ?? 0}     sub="Not yet matched" />
+            <KpiCard label="Unclaimed Items"      value={stats?.items?.found ?? 0}      sub="Found items awaiting a claim" />
+            <KpiCard label="Pending Claims"       value={stats?.claims?.pending ?? 0}   sub="Needs review" accent="text-amber-300" />
+            <KpiCard label="Open Lost Reports"    value={stats?.items?.lost ?? 0}       sub="Not yet matched" />
             <KpiCard label="Returned This Month"  value={stats?.returnedThisMonth ?? 0} sub="Handovers complete" accent="text-emerald-300" />
           </div>
 

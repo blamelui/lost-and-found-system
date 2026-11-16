@@ -41,6 +41,7 @@ export default function ReportLost() {
 
   const [form, setForm] = useState({
     title: '',
+    quantity: '1',
     brand: '',
     color: '',
     category: params.get('category') || '',
@@ -118,15 +119,22 @@ export default function ReportLost() {
       return;
     }
 
+    // Quantity validation
+    const qty = Number(form.quantity);
+    if (form.quantity !== '' && (!Number.isInteger(qty) || qty < 1 || qty > 999)) {
+      setError('Quantity must be a whole number between 1 and 999.');
+      return;
+    }
+
     setBusy(true);
     try {
       const fd = new FormData();
       fd.append('title', form.title);
+      fd.append('quantity', form.quantity || '1');
       if (form.brand) fd.append('brand', form.brand);
       if (form.color) fd.append('color', form.color);
       fd.append('category', form.category);
       if (categoryRequiresOther) fd.append('category_other', form.category_other);
-      // Backend requires description — send a default if empty
       fd.append('description', form.description.trim() || 'No description provided.');
       fd.append('last_location', last_location);
       fd.append('lost_at', form.lost_at);
@@ -162,13 +170,11 @@ export default function ReportLost() {
 
   return (
     <div className="relative">
-      {/* Ambient glow */}
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-3xl">
         <div className="absolute -top-32 right-0 h-[22rem] w-[22rem] rounded-full bg-[#2A5CFF]/15 blur-[120px]" />
         <div className="absolute -bottom-32 -left-16 h-[20rem] w-[20rem] rounded-full bg-violet-600/15 blur-[120px]" />
       </div>
 
-      {/* Header */}
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Report a Lost Item</h1>
@@ -181,30 +187,51 @@ export default function ReportLost() {
 
       <form onSubmit={onSubmit}>
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-          {/* LEFT column */}
           <div className="space-y-5">
-            {/* Item basics */}
             <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 backdrop-blur-xl sm:p-6">
               <h2 className={sectionTitle}>What did you lose?</h2>
 
               <div className="space-y-4">
-                <div>
-                  <label htmlFor="title" className={labelClass}>
-                    <span>Item name{required}</span>
-                  </label>
-                  <input
-                    id="title"
-                    ref={titleRef}
-                    autoFocus
-                    type="text"
-                    required
-                    maxLength={100}
-                    value={form.title}
-                    onChange={(e) => setField('title', e.target.value)}
-                    placeholder="e.g., Blue Hydro Flask with a sticker"
-                    className={inputClass}
-                  />
+                {/* Title + Quantity — side by side */}
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">
+                  <div>
+                    <label htmlFor="title" className={labelClass}>
+                      <span>Item name{required}</span>
+                    </label>
+                    <input
+                      id="title"
+                      ref={titleRef}
+                      autoFocus
+                      type="text"
+                      required
+                      maxLength={100}
+                      value={form.title}
+                      onChange={(e) => setField('title', e.target.value)}
+                      placeholder="e.g., Blue Hydro Flask with a sticker"
+                      className={inputClass}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="quantity" className={labelClass}>
+                      <span>Qty <span className="normal-case text-[#A0B0D0]/50">(optional)</span></span>
+                    </label>
+                    <input
+                      id="quantity"
+                      type="number"
+                      min={1}
+                      max={999}
+                      value={form.quantity}
+                      onChange={(e) => setField('quantity', e.target.value)}
+                      placeholder="1"
+                      className={inputClass}
+                    />
+                  </div>
                 </div>
+
+                <p className="-mt-2 text-[10px] text-[#A0B0D0]/70">
+                  Lost multiple identical items? Enter how many — e.g., 5 ballpens.
+                </p>
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
@@ -261,7 +288,6 @@ export default function ReportLost() {
                   </div>
                 )}
 
-                {/* More details */}
                 <button
                   type="button"
                   onClick={() => setShowMore((v) => !v)}
@@ -312,7 +338,6 @@ export default function ReportLost() {
                   </div>
                 )}
 
-                {/* Photo — collapsed row */}
                 <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
                   {!showPhoto && !photoPreview ? (
                     <button
@@ -388,7 +413,6 @@ export default function ReportLost() {
               </div>
             </section>
 
-            {/* Reporter */}
             <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 backdrop-blur-xl sm:p-6">
               <h2 className={sectionTitle}>About you</h2>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -428,9 +452,7 @@ export default function ReportLost() {
             </section>
           </div>
 
-          {/* RIGHT column */}
           <div className="space-y-5">
-            {/* Time & location */}
             <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 backdrop-blur-xl sm:p-6">
               <h2 className={sectionTitle}>Where &amp; when</h2>
 
@@ -518,7 +540,6 @@ export default function ReportLost() {
               </div>
             </section>
 
-            {/* Live preview */}
             <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 backdrop-blur-xl sm:p-6">
               <h2 className={sectionTitle}>Live preview</h2>
 
@@ -535,6 +556,11 @@ export default function ReportLost() {
                   <span className="shrink-0 text-[#A0B0D0]">Title</span>
                   <span className="line-clamp-2 text-right font-medium text-white">
                     {form.title || <span className="text-[#A0B0D0]/50">—</span>}
+                    {Number(form.quantity) > 1 && (
+                      <span className="ml-2 rounded-full bg-white/[0.08] px-2 py-0.5 text-[10px] font-normal text-[#A0B0D0]">
+                        ×{form.quantity}
+                      </span>
+                    )}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
@@ -564,7 +590,6 @@ export default function ReportLost() {
           </div>
         </div>
 
-        {/* Sticky action bar */}
         <div className="sticky bottom-4 z-10 mt-5 rounded-2xl border border-white/10 bg-[#050B14]/80 p-3 backdrop-blur-xl sm:bottom-6">
           {error && (
             <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">

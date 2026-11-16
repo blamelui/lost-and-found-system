@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 
@@ -6,6 +6,16 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const studentIdRe = /^[A-Z]-\d{4}-\d{3,4}$/i;
+const nameRe = /^[a-zA-Z\s.'-]+$/;
+
+// ─────────── Centralized limits (change here, applies everywhere) ───────────
+const LIMITS = {
+  nameMin: 3,
+  nameMax: 50,
+  studentIdMaxLength: 15,
+  passwordMinLength: 8,
+};
+// ────────────────────────────────────────────────────────────────────────────
 
 export default function Register() {
   const navigate = useNavigate();
@@ -25,7 +35,6 @@ export default function Register() {
 
   function setField(name, value) {
     setFormData((f) => ({ ...f, [name]: value }));
-    // Clear that field's error as soon as the user starts fixing it
     setFieldErrors((e) => {
       if (!e[name]) return e;
       const next = { ...e };
@@ -37,32 +46,52 @@ export default function Register() {
 
   function handleChange(e) {
     const { name, value, type, checked } = e.target;
-    setField(name, type === 'checkbox' ? checked : value);
+    let finalValue = type === 'checkbox' ? checked : value;
+
+    if (name === 'student_id' && typeof finalValue === 'string') {
+      finalValue = finalValue.trim().toUpperCase().slice(0, LIMITS.studentIdMaxLength);
+    }
+    if (name === 'fullname' && typeof finalValue === 'string') {
+      finalValue = finalValue.slice(0, LIMITS.nameMax);
+    }
+    if ((name === 'password' || name === 'confirm_password') && typeof finalValue === 'string') {
+      finalValue = finalValue.replace(/[\u200B-\u200D\uFEFF]/g, '');
+    }
+
+    setField(name, finalValue);
   }
 
-  /* ---- Password strength ---- */
-  const passwordChecks = useMemo(() => ({
-    length: formData.password.length >= 8,
-    upper:  /[A-Z]/.test(formData.password),
-    number: /\d/.test(formData.password),
-  }), [formData.password]);
-
-  const passwordStrongEnough = passwordChecks.length && passwordChecks.upper && passwordChecks.number;
+  /* ---- Password checks ---- */
+  const pw = formData.password;
+  const passwordChecks = {
+    length: pw.length >= LIMITS.passwordMinLength,
+    upper: /[A-Z]/.test(pw),
+    number: /\d/.test(pw),
+    noSpace: !/\s/.test(pw),
+  };
 
   /* ---- Validation ---- */
   function validate() {
     const errors = {};
 
-    if (!formData.fullname.trim()) {
+    const name = formData.fullname.trim();
+    if (!name) {
       errors.fullname = 'Full name is required.';
-    } else if (formData.fullname.trim().length < 2) {
-      errors.fullname = 'Full name must be at least 2 characters.';
+    } else if (name.length < LIMITS.nameMin) {
+      errors.fullname = `Full name must be at least ${LIMITS.nameMin} characters.`;
+    } else if (name.length > LIMITS.nameMax) {
+      errors.fullname = `Full name must be ${LIMITS.nameMax} characters or fewer.`;
+    } else if (!nameRe.test(name)) {
+      errors.fullname = 'Name can only contain letters, spaces, hyphens, and periods.';
     }
 
-    if (!formData.student_id.trim()) {
+    const studentId = formData.student_id.trim();
+    if (!studentId) {
       errors.student_id = 'Student ID is required.';
-    } else if (!studentIdRe.test(formData.student_id.trim())) {
-      errors.student_id = 'Format should look like C-2024-0001.';
+    } else if (studentId.length > LIMITS.studentIdMaxLength) {
+      errors.student_id = `Student ID must be ${LIMITS.studentIdMaxLength} characters or fewer.`;
+    } else if (!studentIdRe.test(studentId)) {
+      errors.student_id = 'Format should look like C-2024-0001 (no spaces).';
     }
 
     if (!formData.email.trim()) {
@@ -73,8 +102,14 @@ export default function Register() {
 
     if (!formData.password) {
       errors.password = 'Password is required.';
-    } else if (!passwordStrongEnough) {
-      errors.password = 'Password needs 8+ characters with 1 uppercase letter and 1 number.';
+    } else if (!passwordChecks.length) {
+      errors.password = `Password must be at least ${LIMITS.passwordMinLength} characters.`;
+    } else if (!passwordChecks.upper) {
+      errors.password = 'Password must contain at least 1 uppercase letter (A-Z).';
+    } else if (!passwordChecks.number) {
+      errors.password = 'Password must contain at least 1 number (0-9).';
+    } else if (!passwordChecks.noSpace) {
+      errors.password = 'Password cannot contain spaces.';
     }
 
     if (!formData.confirm_password) {
@@ -116,7 +151,6 @@ export default function Register() {
         }),
       });
 
-      // Handle non-JSON responses (e.g. server crash, wrong URL)
       const contentType = res.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
         throw new Error(
@@ -129,15 +163,16 @@ export default function Register() {
       const data = await res.json();
 
       if (!res.ok) {
-        // Map HTTP statuses to helpful messages
         if (res.status === 409) {
-          const msg = data.error || '';
-          if (/email/i.test(msg)) {
+          const msg = (data.error || '').toLowerCase();
+          if (msg.includes('email')) {
             setFieldErrors({ email: 'This email is already registered.' });
-          } else if (/username/i.test(msg)) {
-            setFieldErrors({ email: 'This email is already in use — try signing in or use another email.' });
+          } else if (msg.includes('student')) {
+            setFieldErrors({ student_id: 'This Student ID is already in use.' });
+          } else if (msg.includes('name')) {
+            setFieldErrors({ fullname: 'An account with this name already exists.' });
           } else {
-            setGlobalError(msg || 'An account with these details already exists.');
+            setGlobalError(data.error || 'An account with these details already exists.');
           }
           return;
         }
@@ -150,19 +185,15 @@ export default function Register() {
         throw new Error(data.error || `Registration failed (HTTP ${res.status}).`);
       }
 
-      // Success — sign the user in immediately so the header, sidebar,
-      // and role badge reflect the new account without a manual refresh.
       try {
         await login(formData.email.trim().toLowerCase(), formData.password);
       } catch {
-        // Fallback: store token directly (login should have worked, but just in case)
         localStorage.setItem('token', data.token);
       }
 
       const dest = data.user?.role === 'admin' ? '/admin' : '/dashboard';
       navigate(dest, { replace: true });
     } catch (err) {
-      // Network errors, JSON parse errors, etc.
       if (err.name === 'TypeError' && /fetch|network/i.test(err.message)) {
         setGlobalError('Cannot reach the server. Make sure the backend is running on http://localhost:5000.');
       } else {
@@ -217,6 +248,7 @@ export default function Register() {
                   value={formData.fullname} onChange={handleChange}
                   placeholder="Juan Dela Cruz"
                   autoComplete="name"
+                  maxLength={LIMITS.nameMax}
                   aria-invalid={!!fieldErrors.fullname}
                   aria-describedby={fieldErrors.fullname ? 'err-fullname' : undefined}
                   className={`${inputBase} ${fieldErrors.fullname ? inputBad : inputGood}`}
@@ -231,6 +263,7 @@ export default function Register() {
                   id="student_id" name="student_id" type="text"
                   value={formData.student_id} onChange={handleChange}
                   placeholder="C-2024-0000"
+                  maxLength={LIMITS.studentIdMaxLength}
                   aria-invalid={!!fieldErrors.student_id}
                   aria-describedby={fieldErrors.student_id ? 'err-student_id' : undefined}
                   className={`${inputBase} ${fieldErrors.student_id ? inputBad : inputGood}`}
@@ -263,7 +296,7 @@ export default function Register() {
                 <input
                   id="password" name="password" type="password"
                   value={formData.password} onChange={handleChange}
-                  placeholder="At least 8 characters"
+                  placeholder={`At least ${LIMITS.passwordMinLength} characters`}
                   autoComplete="new-password"
                   aria-invalid={!!fieldErrors.password}
                   aria-describedby="pw-hints"
@@ -271,13 +304,16 @@ export default function Register() {
                 />
                 <ul id="pw-hints" className="mt-1.5 space-y-0.5">
                   <li className={`text-xs ${passwordChecks.length ? 'text-emerald-300' : 'text-[#A0B0D0]/70'}`}>
-                    {passwordChecks.length ? '✓' : '○'} At least 8 characters
+                    {passwordChecks.length ? '✓' : '○'} At least {LIMITS.passwordMinLength} characters
                   </li>
                   <li className={`text-xs ${passwordChecks.upper ? 'text-emerald-300' : 'text-[#A0B0D0]/70'}`}>
                     {passwordChecks.upper ? '✓' : '○'} Contains 1 uppercase letter
                   </li>
                   <li className={`text-xs ${passwordChecks.number ? 'text-emerald-300' : 'text-[#A0B0D0]/70'}`}>
                     {passwordChecks.number ? '✓' : '○'} Contains 1 number
+                  </li>
+                  <li className={`text-xs ${passwordChecks.noSpace ? 'text-emerald-300' : 'text-red-300'}`}>
+                    {passwordChecks.noSpace ? '✓' : '✕'} No spaces allowed
                   </li>
                 </ul>
                 {fieldErrors.password && (

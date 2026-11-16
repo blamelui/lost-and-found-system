@@ -28,7 +28,7 @@ router.get('/', async (req, res) => {
         FROM claims`),
       pool.query(`
         SELECT
-          i.id, i.title, i.status, i.created_at,
+          i.id, i.title, i.quantity, i.status, i.created_at,
           i.urgency, i.last_location, i.lost_at, i.image_url, i.linked_lost_id,
           u.username AS reporter,
           (SELECT c.status FROM claims c
@@ -39,9 +39,10 @@ router.get('/', async (req, res) => {
              WHERE c.item_id = i.id
              ORDER BY c.claim_date DESC LIMIT 1) AS claim_requires_proof,
           (SELECT COUNT(*) FROM items f
-             WHERE f.linked_lost_id = i.id AND f.status = 'found') AS resolved_by_found_count
+             WHERE f.linked_lost_id = i.id) AS resolved_by_found_count
         FROM items i
         JOIN users u ON u.id = i.user_id
+        WHERE i.status IN ('lost', 'found')
         ORDER BY i.created_at DESC
         LIMIT 20`),
       pool.query(`
