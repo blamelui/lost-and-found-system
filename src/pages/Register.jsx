@@ -4,18 +4,20 @@ import { useAuth } from '../auth/AuthContext';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// ─────────── Allowed email domain ───────────
+const ALLOWED_EMAIL_DOMAIN = 'thelewiscollege.edu.ph';
+const emailRe = new RegExp(`^[^\\s@]+@${ALLOWED_EMAIL_DOMAIN.replace('.', '\\.')}$`, 'i');
+// ────────────────────────────────────────────
+
 const studentIdRe = /^[A-Z]-\d{4}-\d{3,4}$/i;
 const nameRe = /^[a-zA-Z\s.'-]+$/;
 
-// ─────────── Centralized limits (change here, applies everywhere) ───────────
 const LIMITS = {
   nameMin: 3,
   nameMax: 50,
   studentIdMaxLength: 15,
   passwordMinLength: 8,
 };
-// ────────────────────────────────────────────────────────────────────────────
 
 export default function Register() {
   const navigate = useNavigate();
@@ -61,7 +63,6 @@ export default function Register() {
     setField(name, finalValue);
   }
 
-  /* ---- Password checks ---- */
   const pw = formData.password;
   const passwordChecks = {
     length: pw.length >= LIMITS.passwordMinLength,
@@ -70,7 +71,6 @@ export default function Register() {
     noSpace: !/\s/.test(pw),
   };
 
-  /* ---- Validation ---- */
   function validate() {
     const errors = {};
 
@@ -97,7 +97,7 @@ export default function Register() {
     if (!formData.email.trim()) {
       errors.email = 'College email is required.';
     } else if (!emailRe.test(formData.email.trim())) {
-      errors.email = 'Please enter a valid email address.';
+      errors.email = `Email must end with @${ALLOWED_EMAIL_DOMAIN}`;
     }
 
     if (!formData.password) {
@@ -125,7 +125,6 @@ export default function Register() {
     return errors;
   }
 
-  /* ---- Submit ---- */
   async function handleSubmit(e) {
     e.preventDefault();
     setGlobalError(null);
@@ -279,14 +278,18 @@ export default function Register() {
               <input
                 id="email" name="email" type="email"
                 value={formData.email} onChange={handleChange}
-                placeholder="you@lewiscollege.edu"
+                placeholder={`you@${ALLOWED_EMAIL_DOMAIN}`}
                 autoComplete="email"
                 aria-invalid={!!fieldErrors.email}
-                aria-describedby={fieldErrors.email ? 'err-email' : undefined}
+                aria-describedby={fieldErrors.email ? 'err-email' : 'email-hint'}
                 className={`${inputBase} ${fieldErrors.email ? inputBad : inputGood}`}
               />
-              {fieldErrors.email && (
+              {fieldErrors.email ? (
                 <p id="err-email" className="mt-1 text-xs text-red-300">{fieldErrors.email}</p>
+              ) : (
+                <p id="email-hint" className="mt-1 text-xs text-[#A0B0D0]/60">
+                  Must end with @{ALLOWED_EMAIL_DOMAIN}
+                </p>
               )}
             </div>
 

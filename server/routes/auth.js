@@ -10,7 +10,6 @@ const router = express.Router();
 router.post('/register', async (req, res) => {
   const { fullname, student_id, email, password } = req.body || {};
 
-  // ---- 1. Required fields ----
   if (!fullname || !email || !password || !student_id) {
     return res.status(400).json({ error: 'Full name, student ID, email, and password are required.' });
   }
@@ -19,13 +18,10 @@ router.post('/register', async (req, res) => {
   const studentId = String(student_id).trim().toUpperCase();
   const emailLower = String(email).trim().toLowerCase();
 
-  // ---- 2. Server-side format validation (matches frontend LIMITS) ----
-  // Name: 3-50 chars, letters + spaces + . ' - only, no digits
   if (!/^[A-Za-z\s.'-]{3,50}$/.test(name)) {
     return res.status(400).json({ error: 'Full name must be 3–50 characters and contain only letters.' });
   }
 
-  // Student ID: length cap + strict format C-2024-0001
   if (studentId.length > 15) {
     return res.status(400).json({ error: 'Student ID must be 15 characters or fewer.' });
   }
@@ -33,13 +29,13 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'Student ID must look like C-2024-0001.' });
   }
 
-  // Email format
-  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  // ---- Email must be a college email ----
+  const ALLOWED_EMAIL_DOMAIN = 'thelewiscollege.edu.ph';
+  const emailRe = new RegExp(`^[^\\s@]+@${ALLOWED_EMAIL_DOMAIN.replace('.', '\\.')}$`, 'i');
   if (!emailRe.test(emailLower)) {
-    return res.status(400).json({ error: 'Invalid email address.' });
+    return res.status(400).json({ error: `Email must end with @${ALLOWED_EMAIL_DOMAIN}` });
   }
 
-  // Password strength (matches frontend LIMITS.passwordMinLength)
   if (password.length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters.' });
   }
@@ -50,14 +46,12 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'Password cannot contain spaces.' });
   }
 
-  // Username derived from email prefix (must not contain spaces)
   const username = emailLower.split('@')[0].replace(/\s+/g, '');
   if (!username) {
     return res.status(400).json({ error: 'Could not derive a username from that email.' });
   }
 
   try {
-    // ---- 3. Duplicate checks ----
     const [existingEmail] = await pool.query(
       'SELECT id FROM users WHERE email = ? LIMIT 1',
       [emailLower]
@@ -90,7 +84,6 @@ router.post('/register', async (req, res) => {
       return res.status(409).json({ error: 'That username is already taken.' });
     }
 
-    // ---- 4. Create the user ----
     const hash = await bcrypt.hash(password, 10);
     const [r] = await pool.query(
       `INSERT INTO users (username, full_name, student_id, email, password_hash, role)
